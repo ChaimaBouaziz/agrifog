@@ -1,0 +1,10 @@
+fogId: fog-a
+registry: localhost:5000
+
+services:
+  irrigation-engine: { enabled: true, tag: "0.1.0" }
+  quota-negotiator: { enabled: true, tag: "0.1.0" }
+  fed-learning: { enabled: false, tag: "0.1.0" }
+  pump-scheduler: { enabled: true, tag: "0.1.0" }
+  fog-twin: { enabled: true, tag: "0.1.0" }
+  ota-manager: { enabled: true, tag: "0.1.0" }

@@ -1,0 +1,9 @@
+# Responsable : Ines · Semaine 3
+# ansible-playbook -i inventory.ini site.yml
+- name: Install an AgriFog fog node
+  hosts: fogs
+  become: true
+  tasks:
+    - name: Placeholder
+      ansible.builtin.debug:
+        msg: "TODO: Tailscale, K3s, registry local, Mosquitto, InfluxDB, monitoring, Flux pour {{ inventory_hostname }}"

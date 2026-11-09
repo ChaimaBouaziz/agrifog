@@ -1,0 +1,26 @@
+# Environnement de dev d'un fog (sans K3s).
+#   docker compose -f deploy/compose/docker-compose.yml up -d
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports: ["1883:1883"]
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    restart: unless-stopped
+
+  influxdb:
+    image: influxdb:2.7
+    ports: ["8086:8086"]
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: agrifog
+      DOCKER_INFLUXDB_INIT_PASSWORD: agrifog-dev-only
+      DOCKER_INFLUXDB_INIT_ORG: agrifog
+      DOCKER_INFLUXDB_INIT_BUCKET: telemetry
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: agrifog-dev-token
+    volumes:
+      - influx-data:/var/lib/influxdb2
+    restart: unless-stopped
+
+volumes:
+  influx-data:

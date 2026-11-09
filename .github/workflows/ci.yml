@@ -1,0 +1,47 @@
+name: ci
+
+on:
+  push:
+    branches: [main, "feature/**"]
+  pull_request:
+
+jobs:
+  python-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        component:
+          - libs/agrifog_common
+          - simulator
+          - services/irrigation-engine
+          - services/quota-negotiator
+          - services/fed-learning
+          - services/pump-scheduler
+          - services/fog-twin
+          - services/ota-manager
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          pip install -e libs/agrifog_common pytest
+          if [ -f ${{ matrix.component }}/requirements.txt ]; then pip install -r ${{ matrix.component }}/requirements.txt; fi
+      - name: Test
+        working-directory: ${{ matrix.component }}
+        run: python -m pytest -q
+
+  firmware-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install platformio
+      - run: pio run -d firmware
+      - run: sha256sum firmware/.pio/build/esp32dev/firmware.bin
+      # TODO (Ines, semaine 4) : test Wokwi CLI, publication en release
+      # TODO (Ines, semaine 2) : build des images Docker + scan Trivy

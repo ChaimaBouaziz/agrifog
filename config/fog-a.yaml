@@ -1,0 +1,30 @@
+fog_id: fog-a
+owner: Chaima
+neighbor: fog-b
+
+location:          # Sfax
+  latitude: 34.74
+  longitude: 10.76
+
+crop:
+  name: tomate
+  kc: 1.05          # coefficient cultural (à affiner par stade)
+  moisture_threshold_pct: 35
+
+soil:
+  type: sablo-limoneux
+  field_capacity_pct: 30   # valeurs de départ, réglées en semaine 6
+  wilting_point_pct: 12
+
+zones:
+  - id: z1
+    devices: [esp-a-01, esp-a-02, esp-a-03]
+  - id: z2
+    devices: [esp-a-04, esp-a-05, esp-a-06]
+  - id: z3
+    devices: [esp-a-07, esp-a-08, esp-a-09, esp-a-10]
+
+mqtt:
+  host: localhost
+  port: 1883
+  fallback_brokers: [fog-b]

@@ -1,0 +1,30 @@
+fog_id: fog-b
+owner: Ines
+neighbor: fog-a
+
+location:          # Sfax
+  latitude: 34.74
+  longitude: 10.76
+
+crop:
+  name: olivier
+  kc: 0.65
+  moisture_threshold_pct: 22
+
+soil:
+  type: sableux
+  field_capacity_pct: 18
+  wilting_point_pct: 7
+
+zones:
+  - id: z1
+    devices: [esp-b-01, esp-b-02, esp-b-03]
+  - id: z2
+    devices: [esp-b-04, esp-b-05, esp-b-06]
+  - id: z3
+    devices: [esp-b-07, esp-b-08, esp-b-09, esp-b-10]
+
+mqtt:
+  host: localhost
+  port: 1883
+  fallback_brokers: [fog-a]
