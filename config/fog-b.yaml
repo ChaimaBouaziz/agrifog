@@ -25,6 +25,6 @@ zones:
     devices: [esp-b-07, esp-b-08, esp-b-09, esp-b-10]
 
 mqtt:
-  host: localhost
+  host: 127.0.0.1
   port: 1883
   fallback_brokers: [fog-a]
