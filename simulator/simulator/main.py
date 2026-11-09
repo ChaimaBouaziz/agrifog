@@ -1,48 +1,46 @@
-"""ESP32 fleet simulator — stub: one virtual device publishing telemetry.
+"""Run the virtual ESP32 fleet of one fog.
 
-Run:  FOG_ID=fog-a python -m simulator.main
+    $env:FOG_ID="fog-a"; python -m simulator.main               # 10 devices, réveil toutes les 10 s
+    python -m simulator.main --period 5 --devices 3
 """
 
-import json
-import random
+import argparse
+import threading
 import time
-from datetime import datetime, timezone
 
-import paho.mqtt.client as mqtt
+from agrifog_common import fog_id, load_config
 
-from agrifog_common import fog_id, load_config, topics
+from .fleet import build_fleet
 
-PERIOD_S = 5  # accéléré pour le dev ; le vrai cycle est de X minutes
-
-
-def now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+SOIL_STEP_S = 1.0
 
 
 def main() -> None:
-    cfg = load_config()
-    fog = fog_id()
-    zone = cfg["zones"][0]["id"]
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--period", type=float, default=10, help="secondes de deep sleep (accéléré)")
+    ap.add_argument("--devices", type=int, default=None, help="limiter le nombre d'ESP32")
+    args = ap.parse_args()
 
-    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f"sim-{fog}")
-    client.on_connect = lambda c, u, f, rc, p: print(f"[mqtt] connecté au broker : {rc}")
-    client.on_disconnect = lambda c, u, f, rc, p: print(f"[mqtt] déconnecté : {rc}")
-    client.connect(cfg["mqtt"]["host"], cfg["mqtt"]["port"])
-    client.loop_start()
+    cfg, fog = load_config(), fog_id()
+    zones, devices = build_fleet(cfg, fog, args.period, args.devices)
+    print(f"{fog} : {len(devices)} ESP32 virtuels sur {len(zones)} zones, "
+          f"broker {cfg['mqtt']['host']}:{cfg['mqtt']['port']}")
 
-    moisture = 40.0
-    while True:
-        moisture = max(5.0, moisture - random.uniform(0.1, 0.5))  # TODO: modèle de sol (semaine 2)
-        msg = {
-            "ts": now(),
-            "soil_moisture": round(moisture, 1),
-            "air_temp": round(random.uniform(18, 30), 1),
-            "air_humidity": round(random.uniform(40, 70), 1),
-            "flow_lpm": 0.0,
-        }
-        client.publish(topics.telemetry(fog, zone), json.dumps(msg), qos=1)
-        print(topics.telemetry(fog, zone), msg)
-        time.sleep(PERIOD_S)
+    stop = threading.Event()
+    threads = [threading.Thread(target=d.run, args=(stop,), daemon=True) for d in devices]
+    for t in threads:
+        t.start()
+
+    try:
+        while True:
+            for z in zones.values():
+                z.step(SOIL_STEP_S)
+            time.sleep(SOIL_STEP_S)
+    except KeyboardInterrupt:
+        print("arrêt de la flotte…")
+        stop.set()
+        for t in threads:
+            t.join(timeout=5)
 
 
 if __name__ == "__main__":
