@@ -6,6 +6,8 @@ services:
     ports: ["1883:1883"]
     volumes:
       - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      # bridge propre à chaque fog : FOG_ID=fog-a active le bridge vers fog-b
+      - ./mosquitto/bridges/${FOG_ID:-fog-b}:/mosquitto/config/conf.d:ro
     restart: unless-stopped
 
   influxdb:
