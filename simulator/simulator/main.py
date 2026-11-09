@@ -25,6 +25,8 @@ def main() -> None:
     zone = cfg["zones"][0]["id"]
 
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f"sim-{fog}")
+    client.on_connect = lambda c, u, f, rc, p: print(f"[mqtt] connecté au broker : {rc}")
+    client.on_disconnect = lambda c, u, f, rc, p: print(f"[mqtt] déconnecté : {rc}")
     client.connect(cfg["mqtt"]["host"], cfg["mqtt"]["port"])
     client.loop_start()
 
