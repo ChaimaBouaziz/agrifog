@@ -9,7 +9,9 @@ location:          # Sfax
 crop:
   name: olivier
   kc: 0.65
-  moisture_threshold_pct: 22
+  root_depth_mm: 1000   # profondeur racinaire
+  p: 0.65             # fraction facilement utilisable (FAO-56)
+  moisture_threshold_pct: 11   # = CC - p*(CC-PF) : début du stress
 
 soil:
   type: sableux
@@ -19,12 +21,22 @@ soil:
 zones:
   - id: z1
     devices: [esp-b-01, esp-b-02, esp-b-03]
+    area_m2: 200
+    flow_lpm: 20
   - id: z2
     devices: [esp-b-04, esp-b-05, esp-b-06]
+    area_m2: 200
+    flow_lpm: 20
   - id: z3
     devices: [esp-b-07, esp-b-08, esp-b-09, esp-b-10]
+    area_m2: 200
+    flow_lpm: 20
 
 mqtt:
-  host: 127.0.0.1
+  host: 127.0.0.1   # pas "localhost" : sous Windows il part en IPv6 vers WSL
   port: 1883
   fallback_brokers: [fog-a]
+
+simulation:
+  speed: 360          # 1 s réelle = 6 min simulées (1 jour = 4 min)
+  wake_period_s: 10   # deep sleep des ESP32, en secondes réelles

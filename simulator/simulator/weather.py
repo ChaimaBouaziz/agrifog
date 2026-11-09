@@ -11,6 +11,7 @@ Output: data/meteo_sfax_<start>_<end>.csv
 import argparse
 import csv
 import json
+import math
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -60,6 +61,36 @@ def save_csv(rows: list[dict], path: Path) -> None:
         writer = csv.DictWriter(f, fieldnames=["date", *DAILY_VARS.values()])
         writer.writeheader()
         writer.writerows(rows)
+
+
+def load_weather(path: Path) -> list[dict]:
+    """Read the CSV written by save_csv; numbers as floats (missing -> 0)."""
+    with open(path, encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    for r in rows:
+        for col in DAILY_VARS.values():
+            r[col] = float(r[col]) if r[col] not in ("", None) else 0.0
+    return rows
+
+
+def default_weather_path() -> Path:
+    files = sorted((REPO_ROOT / "data").glob("meteo_sfax_*.csv"))
+    if not files:
+        raise FileNotFoundError("Aucune météo dans data/ : lancer d'abord  python -m simulator.weather")
+    return files[-1]
+
+
+def air_conditions(day: dict, hour: float) -> tuple[float, float]:
+    """Hourly air temperature (°C) and relative humidity (%) from daily values.
+
+    Temperature: cosine between t_min and t_max, warmest at 15h.
+    Humidity: daily mean, lower when it is hotter (about -2 %/°C).
+    """
+    mean = (day["t_max"] + day["t_min"]) / 2
+    amp = (day["t_max"] - day["t_min"]) / 2
+    temp = mean + amp * math.cos(2 * math.pi * (hour - 15) / 24)
+    rh = day["rh_mean"] - 2.0 * (temp - mean)
+    return round(temp, 1), round(min(100.0, max(5.0, rh)), 1)
 
 
 def main() -> None:

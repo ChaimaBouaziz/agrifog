@@ -13,15 +13,19 @@ import random
 import threading
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import paho.mqtt.client as mqtt
 
 from agrifog_common import topics
 
+from .clock import SimClock
+from .soil import SoilBucket, bucket_from_config, et0_rate_mm_h
+from .weather import air_conditions
+
 FW_VERSION = "0.1.0"
 AWAKE_S = 2.0
-FLOW_LPM = 12.0  # débit quand la vanne de la zone est ouverte
+MAX_SUBSTEP = timedelta(minutes=15)
 
 
 def now_iso() -> str:
@@ -30,28 +34,87 @@ def now_iso() -> str:
 
 @dataclass
 class Zone:
-    """Shared state of a zone. Soil model is a placeholder until week 2."""
+    """One irrigation zone: soil bucket + real Sfax weather + a valve with a flowmeter.
+
+    All times are SIMULATED (SimClock). A water command of N seconds opens the valve
+    for N simulated seconds.
+    """
 
     id: str
-    moisture: float = 40.0
-    watering_until: float = 0.0
+    soil: SoilBucket
+    clock: SimClock
+    weather: list[dict]
+    area_m2: float = 200.0
+    flow_lpm: float = 20.0
+    water_l_total: float = 0.0        # compteur du débitmètre (comme un vrai, il ne fait que monter)
+    _open_from: datetime | None = None
+    _open_until: datetime | None = None
+    _last_step: datetime | None = None
+    _done_ids: set = field(default_factory=set, repr=False)
     lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
-    def is_watering(self, t: float | None = None) -> bool:
-        return (t or time.time()) < self.watering_until
+    @property
+    def moisture(self) -> float:
+        return self.soil.theta
 
-    def water(self, seconds: float, t: float | None = None) -> None:
-        t = t or time.time()
-        with self.lock:
-            self.watering_until = max(self.watering_until, t + seconds)
+    def today(self, t: datetime | None = None) -> dict:
+        t = t or self.clock.now()
+        day = (t.date() - self.clock.start.date()).days % len(self.weather)  # la saison boucle
+        return self.weather[day]
 
-    def step(self, dt: float, t: float | None = None) -> None:
-        # TODO semaine 2 : remplacer par le bilan hydrique (ET0, pluie, arrosage)
+    def air(self) -> tuple[float, float]:
+        t = self.clock.now()
+        return air_conditions(self.today(t), t.hour + t.minute / 60)
+
+    def accept_command(self, cmd_id: str | None) -> bool:
+        """False if this command id was already executed."""
+        if cmd_id is None:
+            return True
         with self.lock:
-            if self.is_watering(t):
-                self.moisture = min(60.0, self.moisture + 0.05 * dt)
+            if cmd_id in self._done_ids:
+                return False
+            self._done_ids.add(cmd_id)
+            return True
+
+    def is_watering(self, t: datetime | None = None) -> bool:
+        t = t or self.clock.now()
+        return self._open_until is not None and self._open_from <= t < self._open_until
+
+    def water(self, seconds: float) -> None:
+        t = self.clock.now()
+        with self.lock:
+            if self.is_watering(t):  # QoS 1 : un doublon ne prolonge pas l'arrosage
+                self._open_until = max(self._open_until, t + timedelta(seconds=seconds))
             else:
-                self.moisture = max(5.0, self.moisture - 0.01 * dt)
+                self._open_from, self._open_until = t, t + timedelta(seconds=seconds)
+
+    def _open_minutes(self, t0: datetime, t1: datetime) -> float:
+        if self._open_until is None:
+            return 0.0
+        start, end = max(t0, self._open_from), min(t1, self._open_until)
+        return max(0.0, (end - start).total_seconds() / 60)
+
+    def step(self) -> None:
+        """Advance the soil model from the last step to the current simulated time."""
+        t1 = self.clock.now()
+        with self.lock:
+            t0 = self._last_step or t1
+            self._last_step = t1
+            # sous-pas de 15 min simulées max, pour suivre la courbe journalière de l'ET0
+            while t0 < t1:
+                ta = t0
+                t0 = min(t1, ta + MAX_SUBSTEP)
+                dt_h = (t0 - ta).total_seconds() / 3600
+                day = self.today(ta)
+                hour = ta.hour + ta.minute / 60 + dt_h / 2   # milieu du sous-pas
+                liters = self.flow_lpm * self._open_minutes(ta, t0)
+                self.water_l_total += liters
+                self.soil.step(
+                    dt_h,
+                    et0_mm_h=et0_rate_mm_h(day["et0_fao"], hour),
+                    rain_mm=day["rain_mm"] / 24 * dt_h,   # pluie du jour étalée sur 24 h
+                    irrig_mm=liters / self.area_m2,       # 1 L sur 1 m² = 1 mm
+                )
 
 
 @dataclass
@@ -61,24 +124,27 @@ class VirtualESP32:
     zone: Zone
     broker: tuple[str, int]
     period_s: float
+    has_valve: bool = False   # un seul boîtier par zone pilote la vanne
     battery_v: float = 4.10
     boot_s: float = field(default_factory=time.time)
     cycles: int = 0
 
     # ---- payloads (pure functions, easy to test) ----
     def telemetry(self) -> dict:
+        temp, rh = self.zone.air()
         return {
-            "ts": now_iso(),
+            "ts": self.zone.clock.iso(),                 # temps SIMULÉ
             "device": self.device,
-            "soil_moisture": round(self.zone.moisture + random.gauss(0, 0.5), 1),
-            "air_temp": round(random.uniform(18, 30), 1),       # TODO semaine 2 : météo Sfax
-            "air_humidity": round(random.uniform(40, 70), 1),
-            "flow_lpm": FLOW_LPM if self.zone.is_watering() else 0.0,
+            "soil_moisture": round(self.zone.moisture + random.gauss(0, 0.3), 1),
+            "air_temp": round(temp + random.gauss(0, 0.2), 1),
+            "air_humidity": round(rh + random.gauss(0, 1.0), 1),
+            "flow_lpm": self.zone.flow_lpm if self.zone.is_watering() else 0.0,
+            "water_l_total": round(self.zone.water_l_total, 1),
         }
 
     def heartbeat(self) -> dict:
         return {
-            "ts": now_iso(),
+            "ts": self.zone.clock.iso(),
             "fw_version": FW_VERSION,
             "battery_v": round(self.battery_v, 3),
             "rssi": random.randint(-85, -55),
@@ -87,9 +153,12 @@ class VirtualESP32:
         }
 
     def on_command(self, payload: dict) -> None:
-        if payload.get("action") == "water":
-            self.zone.water(float(payload.get("seconds", 0)))
-            print(f"[{self.device}] arrosage {self.zone.id} pendant {payload.get('seconds')} s")
+        if not self.has_valve or payload.get("action") != "water":
+            return
+        if not self.zone.accept_command(payload.get("id")):
+            return  # doublon (QoS 1) déjà exécuté
+        self.zone.water(float(payload.get("seconds", 0)))
+        print(f"[{self.device}] vanne {self.zone.id} ouverte {payload.get('seconds')} s")
 
     def drain_battery(self) -> None:
         # éveillé : ~80 mA, deep sleep : ~10 µA -> presque tout se joue pendant l'éveil
@@ -103,7 +172,8 @@ class VirtualESP32:
         cmd_topic = topics.cmd(self.fog, self.zone.id)
 
         def on_connect(c, u, f, rc, p):
-            c.subscribe(cmd_topic, qos=1)
+            if self.has_valve:
+                c.subscribe(cmd_topic, qos=1)
 
         def on_message(c, u, msg):
             try:
@@ -134,12 +204,29 @@ class VirtualESP32:
             stop.wait(self.period_s)  # deep sleep
 
 
-def build_fleet(cfg: dict, fog: str, period_s: float, max_devices: int | None = None):
+def build_fleet(
+    cfg: dict,
+    fog: str,
+    period_s: float,
+    clock: SimClock,
+    weather: list[dict],
+    max_devices: int | None = None,
+):
     broker = (cfg["mqtt"]["host"], cfg["mqtt"]["port"])
-    zones = {z["id"]: Zone(z["id"]) for z in cfg["zones"]}
-    devices = [
-        VirtualESP32(fog, dev, zones[z["id"]], broker, period_s)
+    zones = {
+        z["id"]: Zone(
+            z["id"],
+            soil=bucket_from_config(cfg),
+            clock=clock,
+            weather=weather,
+            area_m2=z.get("area_m2", 200.0),
+            flow_lpm=z.get("flow_lpm", 20.0),
+        )
         for z in cfg["zones"]
-        for dev in z["devices"]
+    }
+    devices = [
+        VirtualESP32(fog, dev, zones[z["id"]], broker, period_s, has_valve=(i == 0))
+        for z in cfg["zones"]
+        for i, dev in enumerate(z["devices"])
     ]
     return zones, devices[:max_devices] if max_devices else devices
