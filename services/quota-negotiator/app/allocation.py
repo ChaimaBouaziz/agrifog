@@ -3,8 +3,12 @@
 Every fog runs EXACTLY the same `allocate()` on EXACTLY the same requests, so both
 end up with the same split without any leader: agreement by determinism.
 
-need of a zone for the day (mm) = refill to target now + ETc of the day − rain expected
+need of a zone for the day (mm) = water to END THE DAY above the stress threshold (+1 % margin):
+    threshold+margin − (moisture now − ETc of the day + rain expected), never negative,
+    capped by what the valve can deliver in the cool hours (6 h/day)
 priority of a fog = sensitivity of its crop × (1 + 2 × stress)
+split: each fog first gets its need up to an equal share (nobody loses vs 50/50), then the
+       shares not needed by one fog go to the others (need × priority).
     stress = how deep the driest zone is below the threshold, towards the wilting point (0..1)
 """
 
@@ -34,13 +38,20 @@ class CropParams:
         return self.fc_pct - self.refill_margin_pct
 
 
+NEED_MARGIN_PCT = 1.0
+COOL_HOURS_PER_DAY = 6.0
+
+
 def zone_need_mm(moisture: float, crop: CropParams, et0_day: float, rain_mm: float) -> float:
-    refill = max(0.0, (crop.target_pct - moisture) / 100 * crop.root_mm)
-    return max(0.0, refill + crop.kc * et0_day - rain_mm)
+    """Water needed today so that the zone does not fall under the stress threshold."""
+    end_of_day = moisture - (crop.kc * et0_day - rain_mm) / crop.root_mm * 100
+    return max(0.0, (crop.threshold_pct + NEED_MARGIN_PCT - end_of_day) / 100 * crop.root_mm)
 
 
-def fog_need_l(zones: list[ZoneNeedInput], crop: CropParams, et0_day: float, rain_mm: float) -> float:
-    return sum(zone_need_mm(z.moisture, crop, et0_day, rain_mm) * z.area_m2 for z in zones)
+def fog_need_l(zones: list[ZoneNeedInput], crop: CropParams, et0_day: float, rain_mm: float,
+               flow_lpm: float = 20.0) -> float:
+    max_l = flow_lpm * 60 * COOL_HOURS_PER_DAY      # ce qu'une vanne peut délivrer dans la journée
+    return sum(min(zone_need_mm(z.moisture, crop, et0_day, rain_mm) * z.area_m2, max_l) for z in zones)
 
 
 def stress(moisture: float, crop: CropParams) -> float:
@@ -54,42 +65,47 @@ def priority(zones: list[ZoneNeedInput], crop: CropParams) -> float:
     return round(crop.sensitivity * (1 + 2 * worst), 3)
 
 
+def _water_fill(quota_l: float, need: dict[str, float], prio: dict[str, float]) -> dict[str, float]:
+    """Share proportional to need × priority, never more than the need; leftovers go to the others."""
+    alloc = {f: 0.0 for f in need}
+    remaining, active = quota_l, sorted(f for f in need if need[f] > 0)
+    while remaining > MIN_SHARE_L and active:
+        weight = {f: need[f] * prio[f] for f in active}
+        total_w = sum(weight.values())
+        capped = [f for f in active if alloc[f] + remaining * weight[f] / total_w >= need[f]]
+        if not capped:  # personne n'est rassasié : on distribue tout
+            for f in active:
+                alloc[f] += remaining * weight[f] / total_w
+            break
+        for f in capped:  # les rassasiés prennent leur besoin, le reste est redistribué
+            remaining -= need[f] - alloc[f]
+            alloc[f] = need[f]
+            active.remove(f)
+    return alloc
+
+
 def allocate(quota_l: float, requests: dict[str, dict]) -> dict[str, float]:
     """Split `quota_l` between fogs. requests = {fog: {"need_l": .., "priority": ..}}.
 
-    - if everybody's need fits: everybody gets its need, the rest is split equally (margin);
-    - otherwise "water-filling": share proportional to need × priority, a fog never gets
-      more than it needs, and what it does not need goes back to the others.
+    1. floor: each fog first gets what it needs, up to its EQUAL share
+       -> nobody ever gets less than with a plain 50/50 split (when it needs it);
+    2. what is left (the shares some fogs do not need) goes to the fogs that still need water,
+       in proportion to need × priority;
+    3. if everybody is served, the remaining margin is split equally.
     Deterministic: same inputs -> same output on every fog (sorted keys, rounding).
     """
     fogs = sorted(requests)
     need = {f: max(0.0, float(requests[f]["need_l"])) for f in fogs}
     prio = {f: max(0.01, float(requests[f]["priority"])) for f in fogs}
+    equal = quota_l / len(fogs)
 
     if sum(need.values()) <= quota_l:
         spare = (quota_l - sum(need.values())) / len(fogs)
         return {f: round(need[f] + spare, 1) for f in fogs}
 
-    alloc = {f: 0.0 for f in fogs}
-    remaining, active = quota_l, [f for f in fogs if need[f] > 0]
-    while remaining > MIN_SHARE_L and active:
-        weight = {f: need[f] * prio[f] for f in active}
-        total_w = sum(weight.values())
-        capped = []
-        for f in active:
-            share = remaining * weight[f] / total_w
-            if alloc[f] + share >= need[f]:
-                capped.append(f)
-        if not capped:  # personne n'est rassasié : on distribue tout et c'est fini
-            for f in active:
-                alloc[f] += remaining * weight[f] / total_w
-            remaining = 0.0
-            break
-        for f in capped:  # ceux qui sont rassasiés prennent leur besoin, le reste est redistribué
-            remaining -= need[f] - alloc[f]
-            alloc[f] = need[f]
-            active.remove(f)
-    return {f: round(alloc[f], 1) for f in fogs}
+    base = {f: min(need[f], equal) for f in fogs}
+    extra = _water_fill(quota_l - sum(base.values()), {f: need[f] - base[f] for f in fogs}, prio)
+    return {f: round(base[f] + extra[f], 1) for f in fogs}
 
 
 def isolated_share(quota_l: float, n_fogs: int = 2) -> float:
@@ -99,11 +115,15 @@ def isolated_share(quota_l: float, n_fogs: int = 2) -> float:
 
 def evening_need_l(zones: list[ZoneNeedInput], crop: CropParams, et0_day: float,
                    et_fraction_until_evening: float) -> float:
-    """Water still needed at the evening window, from the moisture now (mid-morning)."""
+    """Water still needed at the evening window (from mid-morning) to stay above the threshold.
+
+    Same logic as zone_need_mm: the night has almost no ET, so the moisture expected at 18h
+    must simply be above threshold + margin.
+    """
     total = 0.0
     for z in zones:
         at_evening = z.moisture - crop.kc * et0_day * et_fraction_until_evening / crop.root_mm * 100
-        total += max(0.0, (crop.target_pct - at_evening) / 100 * crop.root_mm) * z.area_m2
+        total += max(0.0, (crop.threshold_pct + NEED_MARGIN_PCT - at_evening) / 100 * crop.root_mm) * z.area_m2
     return total
 
 

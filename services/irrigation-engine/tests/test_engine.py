@@ -162,12 +162,15 @@ def test_quota_limits_watering_and_counts_usage():
     assert "quota du jour épuisé" in eng.snapshot()["zones"]["z2"]["last_decision"]["reason"]
 
 
-def test_no_budget_means_no_limit():
+def test_before_negotiation_the_equal_share_applies():
     eng, sent = make_engine()
     eng.on_budget({"day": "2025-06-30", "allocated_l": 10})        # budget d'hier : ignoré
     for dev in DEVICES_Z1:
         eng.on_telemetry("z1", tel("06:00", dev, 21.0))
-    assert cmds(sent)[-1]["seconds"] == 7200
+    assert cmds(sent)[-1]["seconds"] == 7200                       # 2400 L < 3000 L provisoires
+    for dev in ("esp-a-04", "esp-a-05", "esp-a-06"):
+        eng.on_telemetry("z2", tel("06:10", dev, 21.0))
+    assert cmds(sent)[-1]["seconds"] == 600 / 20 * 60               # il reste 600 L sur 3000
 
 
 def test_federated_model_prediction_is_shown_when_available(tmp_path, monkeypatch):
@@ -184,3 +187,32 @@ def test_federated_model_prediction_is_shown_when_available(tmp_path, monkeypatc
     dec = next(p for t, p in sent if t == "fog-a/zone/z1/decision" and p["action"] == "water")
     assert dec["ai_moisture_6h"] == 23.0
     assert "IA fédérée : 23.0 %" in dec["reason"]
+
+
+def test_manual_watering_is_followed_not_taken_for_a_leak():
+    eng, sent = make_engine()
+    for dev in DEVICES_Z1:
+        eng.on_telemetry("z1", tel("12:00", dev, 27.0, total=100))
+    eng.on_valve("z1", {"id": "telegram-1", "device": "esp-a-01", "opened": "2025-07-01T12:05:00Z",
+                        "until": "2025-07-01T12:15:00Z", "water_l_total": 100})
+    eng.on_telemetry("z1", tel("12:10", "esp-a-02", 27.2, total=200, flow=20.0))
+    assert not alerts(sent, "leak")                                  # c'est un arrosage, pas une fuite
+    assert [p for t, p in sent if t == "fog-a/quota/usage"][-1]["used_l"] == 200
+
+
+def test_manual_watering_with_broken_pump_is_detected():
+    eng, sent = make_engine()
+    for dev in DEVICES_Z1:
+        eng.on_telemetry("z1", tel("12:00", dev, 27.0, total=100))
+    eng.on_valve("z1", {"id": "telegram-2", "device": "esp-a-01", "opened": "2025-07-01T12:05:00Z",
+                        "until": "2025-07-01T13:05:00Z", "water_l_total": 100})
+    eng.on_telemetry("z1", tel("12:20", "esp-a-02", 27.0, total=100, flow=0.0))
+    assert alerts(sent, "pump")
+
+
+def test_pump_alert_is_resolved_when_water_flows_again():
+    eng, sent = make_engine()
+    water_z1(eng, sent)
+    eng.on_telemetry("z1", tel("06:30", "esp-a-02", 21.0, total=500, flow=0.0))
+    eng.on_telemetry("z1", tel("06:45", "esp-a-02", 21.2, total=800, flow=20.0))
+    assert [p for t, p in sent if t == "fog-a/alert" and p["resolved"] and p["type"] == "pump"]
