@@ -46,12 +46,14 @@ class ZoneState:
     pending: PendingCheck | None = None     # vérification du débitmètre
     rise_check: dict | None = None          # vérification de la hausse d'humidité
     last_decision: dict | None = None
+    air: tuple[float, float] | None = None  # dernière (température, humidité de l'air)
 
     def update(self, msg: dict) -> datetime:
         t = parse_ts(msg["ts"])
         self.last_ts = t if self.last_ts is None else max(self.last_ts, t)
         self.moisture_by_device[msg["device"]] = (t, float(msg["soil_moisture"]))
         self.temps.add(t, float(msg["air_temp"]))
+        self.air = (float(msg["air_temp"]), float(msg.get("air_humidity", 50)))
         if "water_l_total" in msg:
             self.water_l_total = float(msg["water_l_total"])
         return t

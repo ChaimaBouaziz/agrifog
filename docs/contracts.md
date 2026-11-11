@@ -33,6 +33,8 @@
 | `domaine/quota/release/{fog}` | partagée | quota-negotiator | `day`, `fog`, `liters` cédés au voisin |
 | `{fog}/quota/budget` | locale, retained | quota-negotiator | `day`, `allocated_l`, `mode`, `given_l`, `received_l` |
 | `{fog}/quota/usage` | locale | irrigation-engine | `day`, `used_l` |
+| `domaine/fl/global` | partagée, retained | fed-learning (agrégateur) | `run`, `round`, `weights` (listes), `final`, `fogs` |
+| `domaine/fl/update/{fog}` | partagée | fed-learning | `run`, `round`, `fog`, `n` (échantillons), `weights`, `mae` |
 | `domaine/pump/token` | partagée, retained | pump-scheduler | `holder`, `until` |
 
 Seul `domaine/#` traverse le bridge Mosquitto. Le bridge est déclaré **uniquement sur fog-a**.

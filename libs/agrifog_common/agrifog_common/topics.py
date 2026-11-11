@@ -75,3 +75,11 @@ def quota_usage(fog: str) -> str:
 
 
 PUMP_TOKEN = f"{SHARED_ROOT}/pump/token"
+
+
+# --- federated learning (shared) ---
+FL_GLOBAL = f"{SHARED_ROOT}/fl/global"    # retained : modèle global du tour en cours
+
+
+def fl_update(fog: str) -> str:
+    return f"{SHARED_ROOT}/fl/update/{fog}"

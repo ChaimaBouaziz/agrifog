@@ -168,3 +168,19 @@ def test_no_budget_means_no_limit():
     for dev in DEVICES_Z1:
         eng.on_telemetry("z1", tel("06:00", dev, 21.0))
     assert cmds(sent)[-1]["seconds"] == 7200
+
+
+def test_federated_model_prediction_is_shown_when_available(tmp_path, monkeypatch):
+    import numpy as np
+    from agrifog_common.ml import save_model
+    import app.engine as engine_mod
+    path = tmp_path / "moisture_model.json"
+    w = [np.zeros((12, 16)), np.zeros(16), np.zeros((16, 1)), np.array([-0.1])]   # prédit -1 % en 6 h
+    save_model(path, w, {"rounds": 1})
+    monkeypatch.setattr(engine_mod, "MODEL_PATH", path)
+    eng, sent = make_engine()
+    for dev in DEVICES_Z1:
+        eng.on_telemetry("z1", tel("06:00", dev, 24.0))
+    dec = next(p for t, p in sent if t == "fog-a/zone/z1/decision" and p["action"] == "water")
+    assert dec["ai_moisture_6h"] == 23.0
+    assert "IA fédérée : 23.0 %" in dec["reason"]

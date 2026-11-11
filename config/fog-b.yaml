@@ -44,3 +44,6 @@ mqtt:
 simulation:
   speed: 360          # 1 s réelle = 6 min simulées (1 jour = 4 min)
   wake_period_s: 10   # deep sleep des ESP32, en secondes réelles
+
+federated:
+  aggregator: fog-a   # le fog qui orchestre les tours d'apprentissage fédéré

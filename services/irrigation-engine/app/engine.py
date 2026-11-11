@@ -16,6 +16,8 @@ from typing import Callable
 import paho.mqtt.client as mqtt
 
 from agrifog_common import fog_id, load_config, topics
+from agrifog_common.config import REPO_ROOT
+from agrifog_common.ml import HORIZON_H, TARGET_SCALE, feature_vector, load_model, predict
 
 from . import anomalies as an
 from .decision import Crop, Decision, PendingCheck, ZoneSpec, check_delivery, decide
@@ -24,6 +26,7 @@ from .zone_state import ZoneState, parse_ts
 CHECK_DELAY = timedelta(minutes=30)   # vérif débitmètre 30 min (simulées) après la fin
 ACK_TIMEOUT = timedelta(hours=3)      # le boîtier de la vanne doit confirmer avant
 FORECAST_MAX_AGE = timedelta(hours=36)
+MODEL_PATH = REPO_ROOT / "data" / "models" / "moisture_model.json"   # produit par fed-learning
 Publish = Callable[[str, dict], None]
 
 
@@ -34,6 +37,8 @@ class IrrigationEngine:
         c, s = cfg["crop"], cfg["soil"]
         self.crop = Crop(c["name"], c["kc"], c["moisture_threshold_pct"],
                          s["field_capacity_pct"], c["root_depth_mm"])
+        self.wp = s["wilting_point_pct"]
+        self.model, self._model_mtime = None, None
         self.zones = {z["id"]: ZoneSpec(z["id"], z.get("area_m2", 200), z.get("flow_lpm", 20))
                       for z in cfg["zones"]}
         self.state = {zid: ZoneState(zid) for zid in self.zones}
@@ -68,15 +73,36 @@ class IrrigationEngine:
                        self._rain(now), st.watering_until)
             if d.action == "water":
                 d = self._apply_quota(d, now, self.zones[zone_id])
+            ai = self._ai_prediction(st, now, et0)
+            if ai is not None and d.kind in ("water", "urgent", "no_need", "rain"):
+                d.reason += f" | IA fédérée : {ai:.1f} % dans {HORIZON_H} h sans arrosage"
             changed = st.last_decision is None or st.last_decision["kind"] != d.kind or d.action == "water"
             st.last_decision = {"ts": msg["ts"], "action": d.action, "kind": d.kind, "reason": d.reason,
                                 "moisture": round(moisture, 1), "et0": round(et0, 2),
-                                "et0_source": et0_src, "rain_next_24h_mm": self._rain(now)}
+                                "et0_source": et0_src, "rain_next_24h_mm": self._rain(now),
+                                "ai_moisture_6h": None if ai is None else round(ai, 2)}
             if d.action == "water":
                 self._water(st, d, now)
             if changed:
                 self.publish(topics.decision(self.fog, zone_id), st.last_decision)
                 print(f"[{now:%m-%d %H:%M}] {zone_id} {d.action:5} | {d.reason}")
+
+    def _ai_prediction(self, st: ZoneState, now: datetime, et0: float) -> float | None:
+        """Moisture in 6 h if we do NOT water, according to the federated model (if trained)."""
+        try:
+            mtime = MODEL_PATH.stat().st_mtime
+        except OSError:
+            return None
+        if mtime != self._model_mtime:                 # nouveau modèle publié : on le recharge
+            loaded = load_model(MODEL_PATH)
+            self.model, self._model_mtime = (loaded[0] if loaded else None), mtime
+        moisture = st.moisture()
+        if self.model is None or moisture is None or st.air is None:
+            return None
+        x = feature_vector(moisture, st.air[0], st.air[1], now, et0, self.crop.kc, self.crop.fc_pct,
+                           self.wp, self.crop.root_mm, irrig_next=0.0,
+                           rain_next=self._rain(now) * HORIZON_H / 24)
+        return moisture + float(predict(self.model, x[None, :])[0]) * TARGET_SCALE
 
     def _rain(self, now: datetime) -> float:
         if self.forecast_ts is None or now - self.forecast_ts > FORECAST_MAX_AGE:
