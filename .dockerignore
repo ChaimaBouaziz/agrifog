@@ -1,0 +1,15 @@
+# Ce qui n'a rien à faire dans une image (contexte de build = racine du dépôt)
+.git
+.github
+.venv
+**/__pycache__
+**/.pytest_cache
+**/*.egg-info
+data
+experiments
+firmware/.pio
+firmware/.vscode
+deploy
+docs
+*.md
+!services/**/README.md
