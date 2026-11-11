@@ -17,6 +17,7 @@ jobs:
           - services/irrigation-engine
           - services/quota-negotiator
           - services/fed-learning
+          - services/telegram-bot
           - services/pump-scheduler
           - services/fog-twin
           - services/ota-manager
