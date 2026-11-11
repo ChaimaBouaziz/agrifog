@@ -119,13 +119,16 @@ def decide(moisture: float, now: datetime, et0_day: float, crop: Crop, zone: Zon
         if predicted >= crop.threshold_pct + SAFETY_MARGIN_PCT:
             return Decision("wait", f"pas besoin : {moisture:.1f} % maintenant, {predicted:.1f} % prévu "
                                     f"dans {nxt:.0f} h (seuil {crop.threshold_pct} %, ETc {loss_mm:.1f} mm)", "no_need")
+        # la pluie annoncée (24 h) suffira-t-elle à rester au-dessus du seuil ?
+        rain_in_window = rain_expected_mm * min(1.0, nxt / 24)
+        with_rain = predicted + rain_in_window / crop.root_mm * 100
+        if rain_expected_mm > 0 and with_rain >= crop.threshold_pct + SAFETY_MARGIN_PCT:
+            return Decision("wait", f"arrosage reporté : {rain_expected_mm:.1f} mm de pluie prévus, "
+                                    f"humidité attendue {with_rain:.1f} % ≥ seuil {crop.threshold_pct} %", "rain")
 
     dose_mm = max(0.0, (target - moisture) / 100 * crop.root_mm)
     if dose_mm < MIN_DOSE_MM:
         return Decision("wait", f"dose trop faible ({dose_mm:.1f} mm)", "small_dose")
-    if not urgent and rain_expected_mm >= 0.5 * dose_mm:
-        return Decision("wait", f"arrosage reporté : {rain_expected_mm:.1f} mm de pluie prévus "
-                                f"(besoin {dose_mm:.1f} mm)", "rain")
 
     # on n'arrose que pendant le temps qui reste dans la fenêtre (ou 1 h en urgence) :
     # le complément éventuel viendra à la fenêtre suivante

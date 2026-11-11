@@ -20,9 +20,12 @@
 | `{fog}/zone/{zone}/telemetry` | locale | ESP32 | `device`, `soil_moisture`, `air_temp`, `air_humidity`, `flow_lpm`, `water_l_total` (compteur cumulé du débitmètre) |
 | `{fog}/zone/{zone}/cmd` | locale | irrigation-engine | `{"id":"<unique>","action":"water","seconds":600}` — exécutée par l'ESP32 qui porte la vanne (1er de la zone) ; `id` évite les doublons QoS 1 |
 | `{fog}/zone/{zone}/decision` | locale | irrigation-engine | `action` (water/wait), `kind`, `reason` (explication lisible), `moisture`, `et0` — publié quand la situation change |
-| `{fog}/device/{device}/heartbeat` | locale | ESP32 | `fw_version`, `battery_v`, `rssi`, `uptime_s` |
+| `{fog}/device/{device}/heartbeat` | locale | ESP32 | `fw_version`, `battery_v`, `rssi`, `uptime_s`, `broker` (broker utilisé) |
 | `{fog}/device/{device}/ota` | locale | ota-manager | `{"version":"1.1.0","url":"…","sha256":"…"}` |
-| `{fog}/alert` | locale | tous | `{"type":"leak","zone":"z2","msg":"…"}` |
+| `{fog}/zone/{zone}/valve` | locale | ESP32 vanne | accusé d'exécution : `id`, `device`, `state`, `opened`, `until`, `water_l_total` |
+| `{fog}/weather/forecast` | locale, retained | simulateur (puis passerelle météo) | `ts`, `rain_next_24h_mm`, `source` |
+| `{fog}/sim/fault` | locale | humain / bot Telegram | injection de pannes (voir `simulator/simulator/faults.py`) |
+| `{fog}/alert` | locale | irrigation-engine | `ts`, `type` (leak, pump, no_rise, sensor, offline, valve), `zone`, `device`, `msg`, `resolved` |
 | `domaine/fog/{fog}/status` | partagée, retained | chaque fog | `alive`, `cpu`, `ram`, `version` |
 | `domaine/air/{fog}` | partagée | chaque fog | `air_temp`, `air_humidity` |
 | `domaine/quota/request/{fog}` | partagée | quota-negotiator | `need_l`, `priority` (0–1), `day` |
