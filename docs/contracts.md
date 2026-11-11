@@ -7,7 +7,8 @@
 
 - Noms Tailscale : `fog-a` (PC Chaima), `fog-b` (PC Ines).
 - Unités : litres (L), millimètres (mm), °C, % pour l'humidité, secondes (s).
-- Horodatage : UTC, ISO 8601 (`2026-11-09T05:30:00Z`), champ `ts`.
+- Horodatage : UTC, ISO 8601 (`2025-07-01T05:30:00Z`), champ `ts`. **C'est le temps SIMULÉ** (horloge accélérée du simulateur) : les services doivent raisonner sur `ts`, jamais sur l'horloge du PC.
+- Durées de commande en secondes simulées.
 - Messages MQTT en JSON, QoS 1.
 
 ## Topics MQTT
@@ -16,8 +17,8 @@
 
 | Topic | Portée | Émetteur | Contenu |
 |---|---|---|---|
-| `{fog}/zone/{zone}/telemetry` | locale | ESP32 | `soil_moisture`, `air_temp`, `air_humidity`, `flow_lpm` |
-| `{fog}/zone/{zone}/cmd` | locale | irrigation-engine | `{"action":"water","seconds":40}` |
+| `{fog}/zone/{zone}/telemetry` | locale | ESP32 | `device`, `soil_moisture`, `air_temp`, `air_humidity`, `flow_lpm`, `water_l_total` (compteur cumulé du débitmètre) |
+| `{fog}/zone/{zone}/cmd` | locale | irrigation-engine | `{"id":"<unique>","action":"water","seconds":600}` — exécutée par l'ESP32 qui porte la vanne (1er de la zone) ; `id` évite les doublons QoS 1 |
 | `{fog}/device/{device}/heartbeat` | locale | ESP32 | `fw_version`, `battery_v`, `rssi`, `uptime_s` |
 | `{fog}/device/{device}/ota` | locale | ota-manager | `{"version":"1.1.0","url":"…","sha256":"…"}` |
 | `{fog}/alert` | locale | tous | `{"type":"leak","zone":"z2","msg":"…"}` |
