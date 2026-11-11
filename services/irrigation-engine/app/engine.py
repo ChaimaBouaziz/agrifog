@@ -18,7 +18,7 @@ import paho.mqtt.client as mqtt
 from agrifog_common import fog_id, load_config, topics
 
 from . import anomalies as an
-from .decision import Crop, PendingCheck, ZoneSpec, check_delivery, decide
+from .decision import Crop, Decision, PendingCheck, ZoneSpec, check_delivery, decide
 from .zone_state import ZoneState, parse_ts
 
 CHECK_DELAY = timedelta(minutes=30)   # vérif débitmètre 30 min (simulées) après la fin
@@ -41,6 +41,8 @@ class IrrigationEngine:
         self.last_seen: dict[str, datetime] = {}
         self.rain_expected_mm, self.forecast_ts = 0.0, None
         self.alerts = an.AlertBook()
+        self.budget: dict | None = None       # quota du jour, donné par le quota-negotiator
+        self.used_l: dict[str, float] = {}    # litres commandés par jour
         self.publish: Publish = publish or (lambda topic, payload: None)
         self.lock = threading.Lock()
 
@@ -64,6 +66,8 @@ class IrrigationEngine:
             et0, et0_src = st.temps.et0(now.date(), self.lat)
             d = decide(moisture, now, et0, self.crop, self.zones[zone_id],
                        self._rain(now), st.watering_until)
+            if d.action == "water":
+                d = self._apply_quota(d, now, self.zones[zone_id])
             changed = st.last_decision is None or st.last_decision["kind"] != d.kind or d.action == "water"
             st.last_decision = {"ts": msg["ts"], "action": d.action, "kind": d.kind, "reason": d.reason,
                                 "moisture": round(moisture, 1), "et0": round(et0, 2),
@@ -79,9 +83,28 @@ class IrrigationEngine:
             return 0.0  # pas de prévision récente (internet coupé) : on décide sans
         return self.rain_expected_mm
 
+    def _apply_quota(self, d: Decision, now: datetime, zone: ZoneSpec) -> Decision:
+        """Respect the daily budget negotiated with the neighbour (no budget = no limit)."""
+        day = now.date().isoformat()
+        if not self.budget or self.budget.get("day") != day:
+            return d
+        used = self.used_l.get(day, 0.0)
+        left = self.budget["allocated_l"] - used
+        if left < 50:
+            return Decision("wait", f"quota du jour épuisé ({used:.0f} L utilisés sur "
+                                    f"{self.budget['allocated_l']:.0f} L alloués)", "quota")
+        if d.liters <= left:
+            return d
+        seconds = int(left / zone.flow_lpm * 60)
+        return Decision("water", f"{d.reason} — limité par le quota : {left:.0f} L restants",
+                        d.kind, seconds=seconds, liters=left, dose_mm=left / zone.area_m2)
+
     def _water(self, st: ZoneState, d, now: datetime) -> None:
         cmd_id = f"{self.fog}-{st.id}-{now:%Y%m%dT%H%M}"
         self.publish(topics.cmd(self.fog, st.id), {"id": cmd_id, "action": "water", "seconds": d.seconds})
+        day = now.date().isoformat()
+        self.used_l[day] = self.used_l.get(day, 0.0) + d.liters
+        self.publish(topics.quota_usage(self.fog), {"day": day, "used_l": round(self.used_l[day], 1)})
         # estimation en attendant l'accusé du boîtier (évite de renvoyer l'ordre)
         st.watering_until = now + timedelta(seconds=d.seconds)
         st.cmd = {"id": cmd_id, "sent": now, "liters": d.liters, "dose_mm": d.dose_mm,
@@ -181,6 +204,10 @@ class IrrigationEngine:
         with self.lock:
             self._seen(device, parse_ts(msg["ts"]), msg["ts"])
 
+    def on_budget(self, msg: dict) -> None:
+        with self.lock:
+            self.budget = msg
+
     def on_forecast(self, msg: dict) -> None:
         with self.lock:
             self.rain_expected_mm = float(msg.get("rain_next_24h_mm", 0))
@@ -192,6 +219,7 @@ class IrrigationEngine:
                                     "last_decision": st.last_decision}
                               for zid, st in self.state.items()},
                     "rain_next_24h_mm": self.rain_expected_mm,
+                    "budget": self.budget, "used_l": self.used_l,
                     "alerts": list(self.alerts.active.values())}
 
 
@@ -201,7 +229,7 @@ def run_mqtt(engine: IrrigationEngine, host: str, port: int, stop: threading.Eve
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f"irrigation-engine-{fog}")
     engine.publish = lambda topic, payload: client.publish(topic, json.dumps(payload), qos=1)
     subs = [topics.telemetry(fog, "+"), topics.valve(fog, "+"), topics.heartbeat(fog, "+"),
-            topics.weather_forecast(fog)]
+            topics.weather_forecast(fog), topics.quota_budget(fog)]
 
     def on_connect(c, u, f, rc, p):
         print(f"[mqtt] connecté ({rc}), abonné à {', '.join(subs)}")
@@ -213,6 +241,8 @@ def run_mqtt(engine: IrrigationEngine, host: str, port: int, stop: threading.Eve
             parts, payload = m.topic.split("/"), json.loads(m.payload)
             if m.topic == topics.weather_forecast(fog):
                 engine.on_forecast(payload)
+            elif m.topic == topics.quota_budget(fog):
+                engine.on_budget(payload)
             elif parts[1] == "device":
                 engine.on_heartbeat(parts[2], payload)
             elif parts[3] == "telemetry":

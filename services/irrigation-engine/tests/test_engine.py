@@ -145,3 +145,26 @@ def test_snapshot_exposes_reason_and_alerts():
     snap = eng.snapshot()
     assert "hors heures fraîches" in snap["zones"]["z2"]["last_decision"]["reason"]
     assert snap["alerts"][0]["type"] == "leak"
+
+
+def test_quota_limits_watering_and_counts_usage():
+    eng, sent = make_engine()
+    eng.on_budget({"day": "2025-07-01", "allocated_l": 1000})
+    for dev in DEVICES_Z1:
+        eng.on_telemetry("z1", tel("06:00", dev, 21.0))
+    cmd = cmds(sent)[-1]
+    assert cmd["seconds"] == 1000 / 20 * 60                       # 1000 L à 20 L/min
+    usage = [p for t, p in sent if t == "fog-a/quota/usage"]
+    assert usage[-1] == {"day": "2025-07-01", "used_l": 1000}
+    for dev in ("esp-a-04", "esp-a-05", "esp-a-06"):
+        eng.on_telemetry("z2", tel("06:10", dev, 21.0))
+    assert len(cmds(sent)) == 1                                    # plus de quota pour z2
+    assert "quota du jour épuisé" in eng.snapshot()["zones"]["z2"]["last_decision"]["reason"]
+
+
+def test_no_budget_means_no_limit():
+    eng, sent = make_engine()
+    eng.on_budget({"day": "2025-06-30", "allocated_l": 10})        # budget d'hier : ignoré
+    for dev in DEVICES_Z1:
+        eng.on_telemetry("z1", tel("06:00", dev, 21.0))
+    assert cmds(sent)[-1]["seconds"] == 7200

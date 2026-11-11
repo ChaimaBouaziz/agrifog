@@ -22,3 +22,8 @@ Types : `leak`, `pump_fail`, `sensor_stuck`, `sensor_bias`, `offline`, `rain_for
 
 Les ESP32 essaient leur broker puis ceux de `fallback_brokers` (config) : si le fog tombe,
 ils basculent sur le voisin, et reviennent dès que leur broker répond de nouveau.
+
+## Horloge synchronisée (semaine 5)
+
+Pour négocier le quota, les deux fogs doivent être au même jour simulé au même moment :
+lancer les deux simulateurs avec `--sync` (départ = minuit UTC réel, la saison boucle).

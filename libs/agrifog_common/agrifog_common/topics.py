@@ -55,5 +55,23 @@ def quota_request(fog: str) -> str:
     return f"{SHARED_ROOT}/quota/request/{fog}"
 
 
-QUOTA_ALLOCATION = f"{SHARED_ROOT}/quota/allocation"
+def quota_allocation(fog: str) -> str:
+    """Allocation computed by `fog` (both fogs compute and publish the same one)."""
+    return f"{SHARED_ROOT}/quota/allocation/{fog}"
+
+
+def quota_release(fog: str) -> str:
+    """Liters given back by `fog` to its neighbour for today."""
+    return f"{SHARED_ROOT}/quota/release/{fog}"
+
+
+# --- local quota topics ---
+def quota_budget(fog: str) -> str:
+    return f"{fog}/quota/budget"
+
+
+def quota_usage(fog: str) -> str:
+    return f"{fog}/quota/usage"
+
+
 PUMP_TOKEN = f"{SHARED_ROOT}/pump/token"

@@ -74,12 +74,15 @@ def main() -> None:
     ap.add_argument("--devices", type=int, default=None, help="limiter le nombre d'ESP32")
     ap.add_argument("--moisture", type=float, default=None,
                     help="humidité de départ du sol en %% (défaut : capacité au champ)")
+    ap.add_argument("--sync", action="store_true",
+                    help="horloge commune aux fogs (minuit UTC réel = départ) : obligatoire pour négocier le quota")
     args = ap.parse_args()
 
     weather_path = default_weather_path()
     weather = load_weather(weather_path)
     start = datetime.fromisoformat(weather[0]["date"]).replace(hour=0)
-    clock = SimClock(start, args.speed)
+    real0 = (time.time() // 86400) * 86400 if args.sync else None
+    clock = SimClock(start, args.speed, real0=real0)
 
     zones, devices = build_fleet(cfg, fog, args.period, clock, weather, args.devices)
     if args.moisture is not None:
@@ -89,6 +92,7 @@ def main() -> None:
           f"brokers {', '.join(h for h, _ in devices[0].brokers)}")
     print(f"météo {weather_path.name}, départ {start:%Y-%m-%d}, vitesse x{args.speed:g} "
           f"(1 jour simulé = {86400 / args.speed / 60:.1f} min réelles)")
+    print(f"horloge {'synchronisée' if args.sync else 'locale'} : maintenant {clock.now():%Y-%m-%d %H:%M} (simulé)")
     print(f"pannes : publier sur {topics.sim_fault(fog)} (voir simulator/faults.py)")
 
     forecast = ForecastOverride()
