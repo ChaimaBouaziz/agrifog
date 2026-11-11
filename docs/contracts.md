@@ -19,6 +19,7 @@
 |---|---|---|---|
 | `{fog}/zone/{zone}/telemetry` | locale | ESP32 | `device`, `soil_moisture`, `air_temp`, `air_humidity`, `flow_lpm`, `water_l_total` (compteur cumulé du débitmètre) |
 | `{fog}/zone/{zone}/cmd` | locale | irrigation-engine | `{"id":"<unique>","action":"water","seconds":600}` — exécutée par l'ESP32 qui porte la vanne (1er de la zone) ; `id` évite les doublons QoS 1 |
+| `{fog}/zone/{zone}/decision` | locale | irrigation-engine | `action` (water/wait), `kind`, `reason` (explication lisible), `moisture`, `et0` — publié quand la situation change |
 | `{fog}/device/{device}/heartbeat` | locale | ESP32 | `fw_version`, `battery_v`, `rssi`, `uptime_s` |
 | `{fog}/device/{device}/ota` | locale | ota-manager | `{"version":"1.1.0","url":"…","sha256":"…"}` |
 | `{fog}/alert` | locale | tous | `{"type":"leak","zone":"z2","msg":"…"}` |
