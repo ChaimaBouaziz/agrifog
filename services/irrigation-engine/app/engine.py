@@ -47,6 +47,8 @@ class IrrigationEngine:
         self.rain_expected_mm, self.forecast_ts = 0.0, None
         self.alerts = an.AlertBook()
         self.budget: dict | None = None       # quota du jour, donné par le quota-negotiator
+        quota = cfg.get("domain", {}).get("daily_quota_l")
+        self.provisional_l = quota / 2 if quota else None   # avant la négociation : part égale
         self.used_l: dict[str, float] = {}    # litres commandés par jour
         self.publish: Publish = publish or (lambda topic, payload: None)
         self.lock = threading.Lock()
@@ -112,13 +114,17 @@ class IrrigationEngine:
     def _apply_quota(self, d: Decision, now: datetime, zone: ZoneSpec) -> Decision:
         """Respect the daily budget negotiated with the neighbour (no budget = no limit)."""
         day = now.date().isoformat()
-        if not self.budget or self.budget.get("day") != day:
+        if self.budget and self.budget.get("day") == day:
+            allocated, label = self.budget["allocated_l"], "alloués"
+        elif self.provisional_l is not None:      # pas encore négocié (avant 4h) : part égale
+            allocated, label = self.provisional_l, "provisoires (part égale)"
+        else:
             return d
         used = self.used_l.get(day, 0.0)
-        left = self.budget["allocated_l"] - used
+        left = allocated - used
         if left < 50:
             return Decision("wait", f"quota du jour épuisé ({used:.0f} L utilisés sur "
-                                    f"{self.budget['allocated_l']:.0f} L alloués)", "quota")
+                                    f"{allocated:.0f} L {label})", "quota")
         if d.liters <= left:
             return d
         seconds = int(left / zone.flow_lpm * 60)
@@ -142,9 +148,20 @@ class IrrigationEngine:
             return
         with self.lock:
             st = self.state[zone_id]
+            opened, until = parse_ts(msg["opened"]), parse_ts(msg["until"])
             if not st.cmd or msg.get("id") != st.cmd["id"]:
-                return
-            st.valve_opened, st.valve_until = parse_ts(msg["opened"]), parse_ts(msg["until"])
+                # ordre externe (bouton Telegram, opérateur) : on le suit comme les nôtres,
+                # sinon son eau passerait pour une fuite et une pompe en panne passerait inaperçue
+                spec = self.zones[zone_id]
+                liters = spec.flow_lpm * (until - opened).total_seconds() / 60
+                st.cmd = {"id": msg.get("id"), "sent": opened, "liters": liters,
+                          "dose_mm": liters / spec.area_m2,
+                          "before": {dev: v for dev, (t, v) in st.moisture_by_device.items()}}
+                day = opened.date().isoformat()
+                self.used_l[day] = self.used_l.get(day, 0.0) + liters
+                self.publish(topics.quota_usage(self.fog), {"day": day, "used_l": round(self.used_l[day], 1)})
+                print(f"[{opened:%m-%d %H:%M}] {zone_id} arrosage manuel ({msg.get('id')}) : {liters:.0f} L")
+            st.valve_opened, st.valve_until = opened, until
             st.watering_until = st.valve_until
             st.pending = PendingCheck(st.cmd["id"], float(msg.get("water_l_total", st.water_l_total or 0)),
                                       st.cmd["liters"], st.valve_until + CHECK_DELAY)
@@ -167,6 +184,8 @@ class IrrigationEngine:
         if an.detect_pump_failure(flow, now, st.valve_opened, st.valve_until):
             self._alert(("pump", st.id), {"ts": ts, "type": "pump", "zone": st.id,
                         "msg": f"vanne de {st.id} ouverte mais débit nul : pompe en panne ou réservoir vide ?"})
+        elif an.valve_should_be_open(now, st.valve_opened, st.valve_until) and flow > an.FLOW_EPS_LPM:
+            self._resolve(("pump", st.id), ts)        # l'eau coule de nouveau pendant l'arrosage
 
     def _check_delivery(self, st: ZoneState, now: datetime) -> None:
         if st.pending is None or st.water_l_total is None:

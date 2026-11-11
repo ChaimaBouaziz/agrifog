@@ -45,12 +45,12 @@ def test_both_fogs_agree_on_the_same_split():
     bus, a, b = make_pair()
     a.on_decision({"et0": 6.5}); b.on_decision({"et0": 6.5})
     feed(a, "03:00", 21.0)          # tomate sèche
-    feed(b, "03:00", 15.0)          # olivier confortable
+    feed(b, "03:00", 17.5)          # olivier bien arrosé : besoin < sa moitié
     alloc_a = [p for t, p in bus.log if t == "domaine/quota/allocation/fog-a"][0]["allocation"]
     alloc_b = [p for t, p in bus.log if t == "domaine/quota/allocation/fog-b"][0]["allocation"]
     assert alloc_a == alloc_b
     assert sum(alloc_a.values()) == 6000
-    assert alloc_a["fog-a"] > alloc_a["fog-b"]           # la tomate stressée passe devant
+    assert alloc_a["fog-a"] > alloc_a["fog-b"]           # la tomate récupère ce dont l'olivier n'a pas besoin
     assert budgets(bus, "fog-a")[-1]["mode"] == "négocié"
 
 
@@ -65,11 +65,10 @@ def test_silent_neighbour_means_isolated_half():
 
 def test_spare_is_given_to_the_neighbour_at_10h():
     bus, a, b = make_pair()
-    a.on_decision({"et0": 3.0}); b.on_decision({"et0": 6.5})
-    feed(a, "03:00", 29.5); feed(b, "03:00", 9.0)
+    a.on_decision({"et0": 6.5}); b.on_decision({"et0": 6.5})
+    feed(a, "03:00", 24.5); feed(b, "03:00", 17.5)       # les deux rentrent dans le quota : marge partagée
     before_b = budgets(bus, "fog-b")[-1]["allocated_l"]
-    a.on_forecast({"rain_next_24h_mm": 0})
-    feed(a, "10:00", 29.5)                               # tomate encore bien humide : surplus
+    feed(a, "10:00", 29.0)                               # arrosée ce matin : plus besoin de rien ce soir
     released = [p for t, p in bus.log if t == "domaine/quota/release/fog-a"]
     assert released and released[0]["liters"] > 0
     assert budgets(bus, "fog-b")[-1]["allocated_l"] == before_b + released[0]["liters"]
