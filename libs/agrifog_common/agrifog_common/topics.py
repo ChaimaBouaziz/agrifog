@@ -28,6 +28,20 @@ def alert(fog: str) -> str:
     return f"{fog}/alert"
 
 
+def valve(fog: str, zone: str) -> str:
+    """Valve device acknowledges a command: actual open time and until."""
+    return f"{fog}/zone/{zone}/valve"
+
+
+def weather_forecast(fog: str) -> str:
+    return f"{fog}/weather/forecast"
+
+
+def sim_fault(fog: str) -> str:
+    """Fault injection (simulator only): leak, pump_fail, sensor_stuck..."""
+    return f"{fog}/sim/fault"
+
+
 # --- shared topics (cross the bridge) ---
 def fog_status(fog: str) -> str:
     return f"{SHARED_ROOT}/fog/{fog}/status"

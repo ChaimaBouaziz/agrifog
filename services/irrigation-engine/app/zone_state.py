@@ -40,7 +40,11 @@ class ZoneState:
     water_l_total: float | None = None
     last_ts: datetime | None = None
     watering_until: datetime | None = None
-    pending: PendingCheck | None = None
+    cmd: dict | None = None                 # dernier ordre envoyé, en attente d'accusé
+    valve_opened: datetime | None = None    # d'après l'accusé du boîtier
+    valve_until: datetime | None = None
+    pending: PendingCheck | None = None     # vérification du débitmètre
+    rise_check: dict | None = None          # vérification de la hausse d'humidité
     last_decision: dict | None = None
 
     def update(self, msg: dict) -> datetime:
