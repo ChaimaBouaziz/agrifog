@@ -5,7 +5,12 @@ on:
     branches: [main, "feature/**"]
   pull_request:
 
+permissions:
+  contents: read
+  packages: write        # publier les images dans le registry GitHub (ghcr.io) depuis main
+
 jobs:
+  # 1. Tests unitaires de chaque composant -------------------------------------------
   python-tests:
     runs-on: ubuntu-latest
     strategy:
@@ -34,6 +39,7 @@ jobs:
         working-directory: ${{ matrix.component }}
         run: python -m pytest -q
 
+  # 2. Firmware ESP32 : compilation + checksum + binaire téléchargeable ---------------
   firmware-build:
     runs-on: ubuntu-latest
     steps:
@@ -43,6 +49,86 @@ jobs:
           python-version: "3.12"
       - run: pip install platformio
       - run: pio run -d firmware
-      - run: sha256sum firmware/.pio/build/esp32dev/firmware.bin
-      # TODO (Ines, semaine 4) : test Wokwi CLI, publication en release
-      # TODO (Ines, semaine 2) : build des images Docker + scan Trivy
+      - name: Checksum
+        run: |
+          cd firmware/.pio/build/esp32dev
+          sha256sum firmware.bin | tee firmware.bin.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ github.sha }}
+          path: |
+            firmware/.pio/build/esp32dev/firmware.bin
+            firmware/.pio/build/esp32dev/firmware.bin.sha256
+      # TODO (Ines, semaine 4) : test Wokwi CLI
+
+  # 3. Images Docker + scan de sécurité Trivy -----------------------------------------
+  docker-images:
+    needs: python-tests                 # on ne construit que du code testé
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - { name: simulator,         dockerfile: simulator/Dockerfile }
+          - { name: irrigation-engine, dockerfile: services/irrigation-engine/Dockerfile }
+          - { name: quota-negotiator,  dockerfile: services/quota-negotiator/Dockerfile }
+          - { name: fed-learning,      dockerfile: services/fed-learning/Dockerfile }
+          - { name: telegram-bot,      dockerfile: services/telegram-bot/Dockerfile }
+          - { name: ota-manager,       dockerfile: services/ota-manager/Dockerfile }
+          - { name: fog-twin,          dockerfile: services/fog-twin/Dockerfile }
+          - { name: pump-scheduler,    dockerfile: services/pump-scheduler/Dockerfile }
+    env:
+      IMAGE: agrifog/${{ matrix.image.name }}:${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: docker build -f ${{ matrix.image.dockerfile }} -t "$IMAGE" .
+
+      - name: Install Trivy
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+            | sudo sh -s -- -b /usr/local/bin
+          trivy --version
+
+      - name: Scan Trivy (rapport)
+        run: |
+          trivy image --no-progress --severity HIGH,CRITICAL --format table "$IMAGE" | tee trivy.txt
+          {
+            echo "### Trivy — ${{ matrix.image.name }}"
+            echo '```'
+            trivy image --quiet --severity LOW,MEDIUM,HIGH,CRITICAL --format table "$IMAGE" \
+              | grep -E "^Total|^\S+ \(" || echo "aucune vulnérabilité"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Bloquer si vulnérabilité CRITICAL corrigeable
+        run: trivy image --quiet --severity CRITICAL --ignore-unfixed --exit-code 1 "$IMAGE"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trivy-${{ matrix.image.name }}
+          path: trivy.txt
+
+      # Sur main uniquement : image multi-architecture (PC + Raspberry Pi) publiée sur ghcr.io
+      - name: Login ghcr.io
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-qemu-action@v3
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      - uses: docker/setup-buildx-action@v3
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      - name: Push multi-arch (amd64 + arm64)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          docker buildx build --platform linux/amd64,linux/arm64 \
+            -f ${{ matrix.image.dockerfile }} \
+            -t ghcr.io/$OWNER/agrifog-${{ matrix.image.name }}:${{ github.sha }} \
+            -t ghcr.io/$OWNER/agrifog-${{ matrix.image.name }}:latest \
+            --push .
