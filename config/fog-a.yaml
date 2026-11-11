@@ -11,12 +11,16 @@ crop:
   kc: 1.05          # coefficient cultural (à affiner par stade)
   root_depth_mm: 600   # profondeur racinaire
   p: 0.4             # fraction facilement utilisable (FAO-56)
+  stress_sensitivity: 1.0   # poids dans le partage du quota (1 = très sensible au stress)
   moisture_threshold_pct: 23   # = CC - p*(CC-PF) : début du stress
 
 soil:
   type: sablo-limoneux
   field_capacity_pct: 30   # valeurs de départ, réglées en semaine 6
   wilting_point_pct: 12
+
+domain:            # ressource partagée par les deux fogs (même valeur des deux côtés !)
+  daily_quota_l: 6000
 
 zones:
   - id: z1

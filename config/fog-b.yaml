@@ -11,12 +11,16 @@ crop:
   kc: 0.65
   root_depth_mm: 1000   # profondeur racinaire
   p: 0.65             # fraction facilement utilisable (FAO-56)
+  stress_sensitivity: 0.5   # poids dans le partage du quota (1 = très sensible au stress)
   moisture_threshold_pct: 11   # = CC - p*(CC-PF) : début du stress
 
 soil:
   type: sableux
   field_capacity_pct: 18
   wilting_point_pct: 7
+
+domain:            # ressource partagée par les deux fogs (même valeur des deux côtés !)
+  daily_quota_l: 6000
 
 zones:
   - id: z1

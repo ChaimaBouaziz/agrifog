@@ -28,8 +28,11 @@
 | `{fog}/alert` | locale | irrigation-engine | `ts`, `type` (leak, pump, no_rise, sensor, offline, valve), `zone`, `device`, `msg`, `resolved` |
 | `domaine/fog/{fog}/status` | partagée, retained | chaque fog | `alive`, `cpu`, `ram`, `version` |
 | `domaine/air/{fog}` | partagée | chaque fog | `air_temp`, `air_humidity` |
-| `domaine/quota/request/{fog}` | partagée | quota-negotiator | `need_l`, `priority` (0–1), `day` |
-| `domaine/quota/allocation` | partagée, retained | quota-negotiator | `{"day":"…","fog-a":420,"fog-b":580}` |
+| `domaine/quota/request/{fog}` | partagée | quota-negotiator | `day`, `fog`, `need_l`, `priority`, `ts` |
+| `domaine/quota/allocation/{fog}` | partagée, retained | quota-negotiator | `day`, `quota_l`, `allocation` `{fog: litres}`, `mode` (négocié / isolé), `computed_by` |
+| `domaine/quota/release/{fog}` | partagée | quota-negotiator | `day`, `fog`, `liters` cédés au voisin |
+| `{fog}/quota/budget` | locale, retained | quota-negotiator | `day`, `allocated_l`, `mode`, `given_l`, `received_l` |
+| `{fog}/quota/usage` | locale | irrigation-engine | `day`, `used_l` |
 | `domaine/pump/token` | partagée, retained | pump-scheduler | `holder`, `until` |
 
 Seul `domaine/#` traverse le bridge Mosquitto. Le bridge est déclaré **uniquement sur fog-a**.
@@ -45,6 +48,6 @@ Seul `domaine/#` traverse le bridge Mosquitto. Le bridge est déclaré **uniquem
 
 ## Valeurs communes
 
-- Quota journalier du domaine : 1000 L (à ajuster après le modèle de sol).
+- Quota journalier du domaine : `domain.daily_quota_l` dans la config (6000 L, identique sur les deux fogs).
 - Repli hors ligne : 50 % du quota pour chaque fog.
 - Heures fraîches : 05:00–08:00 et 18:00–21:00 (heure locale).

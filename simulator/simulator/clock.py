@@ -9,13 +9,15 @@ from typing import Callable
 
 
 class SimClock:
-    def __init__(self, start: datetime, speed: float, real_time: Callable[[], float] = time.time):
+    def __init__(self, start: datetime, speed: float, real_time: Callable[[], float] = time.time,
+                 real0: float | None = None):
         if start.tzinfo is None:
             start = start.replace(tzinfo=timezone.utc)
         self.start = start
         self.speed = speed
         self._real_time = real_time
-        self._real0 = real_time()
+        # real0 commun aux deux fogs (--sync) -> même date simulée au même instant
+        self._real0 = real_time() if real0 is None else real0
 
     def now(self) -> datetime:
         return self.start + timedelta(seconds=(self._real_time() - self._real0) * self.speed)
