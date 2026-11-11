@@ -29,6 +29,8 @@ def main() -> None:
     ap.add_argument("--period", type=float, default=sim.get("wake_period_s", 10),
                     help="secondes RÉELLES de deep sleep entre deux réveils")
     ap.add_argument("--devices", type=int, default=None, help="limiter le nombre d'ESP32")
+    ap.add_argument("--moisture", type=float, default=None,
+                    help="humidité de départ du sol en %% (défaut : capacité au champ)")
     args = ap.parse_args()
 
     weather_path = default_weather_path()
@@ -37,6 +39,9 @@ def main() -> None:
     clock = SimClock(start, args.speed)
 
     zones, devices = build_fleet(cfg, fog, args.period, clock, weather, args.devices)
+    if args.moisture is not None:
+        for z in zones.values():
+            z.soil.theta = args.moisture
     print(f"{fog} : {len(devices)} ESP32 virtuels sur {len(zones)} zones, "
           f"broker {cfg['mqtt']['host']}:{cfg['mqtt']['port']}")
     print(f"météo {weather_path.name}, départ {start:%Y-%m-%d}, vitesse x{args.speed:g} "

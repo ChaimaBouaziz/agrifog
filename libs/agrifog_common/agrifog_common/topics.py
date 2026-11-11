@@ -12,6 +12,10 @@ def cmd(fog: str, zone: str) -> str:
     return f"{fog}/zone/{zone}/cmd"
 
 
+def decision(fog: str, zone: str) -> str:
+    return f"{fog}/zone/{zone}/decision"
+
+
 def heartbeat(fog: str, device: str) -> str:
     return f"{fog}/device/{device}/heartbeat"
 
