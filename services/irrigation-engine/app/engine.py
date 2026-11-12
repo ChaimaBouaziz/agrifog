@@ -43,6 +43,9 @@ class IrrigationEngine:
                       for z in cfg["zones"]}
         self.state = {zid: ZoneState(zid) for zid in self.zones}
         self.devices = {d: z["id"] for z in cfg["zones"] for d in z["devices"]}
+        # zones simulées (temps simulé) et zones réelles, ex. Wokwi (temps réel) : deux horloges
+        self.domain = {d: ("sim" if z.get("simulated", True) else "real") for z in cfg["zones"] for d in z["devices"]}
+        self.domain_now: dict[str, datetime] = {}
         self.last_seen: dict[str, datetime] = {}
         self.rain_expected_mm, self.forecast_ts = 0.0, None
         self.alerts = an.AlertBook()
@@ -221,16 +224,22 @@ class IrrigationEngine:
         st.rise_check = None
 
     def _seen(self, device: str | None, now: datetime, ts: str) -> None:
-        if not self.last_seen:  # premier message : on démarre le chronomètre de tous les ESP32
-            self.last_seen = {d: now for d in self.devices}
-        if device in self.devices:
-            self.last_seen[device] = max(now, self.last_seen.get(device, now))
-            self._resolve(("offline", device), ts)
+        if device not in self.devices:
+            return
+        dom = self.domain[device]
+        if dom not in self.domain_now and dom == "sim":
+            # 1er message simulé : on démarre le chronomètre de tous les ESP32 simulés
+            self.last_seen.update({d: now for d, x in self.domain.items() if x == "sim"})
+        self.domain_now[dom] = max(now, self.domain_now.get(dom, now))
+        self.last_seen[device] = max(now, self.last_seen.get(device, now))   # un ESP32 réel : dès qu'il parle
+        self._resolve(("offline", device), ts)
 
     def _check_offline(self, now: datetime, ts: str) -> None:
-        for d in an.offline_devices(self.last_seen, now):
-            self._alert(("offline", d), {"ts": ts, "type": "offline", "zone": self.devices[d], "device": d,
-                        "msg": f"{d} ne donne plus de nouvelles depuis {now - self.last_seen[d]} (nœud hors service ?)"})
+        for dom, dom_now in self.domain_now.items():
+            seen = {d: t for d, t in self.last_seen.items() if self.domain[d] == dom}
+            for d in an.offline_devices(seen, dom_now):
+                self._alert(("offline", d), {"ts": ts, "type": "offline", "zone": self.devices[d], "device": d,
+                            "msg": f"{d} ne donne plus de nouvelles depuis {dom_now - seen[d]} (nœud hors service ?)"})
 
     def _alert(self, key: tuple, payload: dict) -> None:
         msg = self.alerts.raise_(key, payload)

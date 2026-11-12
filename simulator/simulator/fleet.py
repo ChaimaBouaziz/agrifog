@@ -258,6 +258,7 @@ def build_fleet(
 ):
     port = cfg["mqtt"]["port"]
     brokers = [(cfg["mqtt"]["host"], port)] + [(h, port) for h in cfg["mqtt"].get("fallback_brokers", [])]
+    sim_zones = [z for z in cfg["zones"] if z.get("simulated", True)]   # zones réelles (Wokwi) exclues
     zones = {
         z["id"]: Zone(
             z["id"],
@@ -267,11 +268,11 @@ def build_fleet(
             area_m2=z.get("area_m2", 200.0),
             flow_lpm=z.get("flow_lpm", 20.0),
         )
-        for z in cfg["zones"]
+        for z in sim_zones
     }
     devices = [
         VirtualESP32(fog, dev, zones[z["id"]], brokers, period_s, has_valve=(i == 0))
-        for z in cfg["zones"]
+        for z in sim_zones
         for i, dev in enumerate(z["devices"])
     ]
     return zones, devices[:max_devices] if max_devices else devices

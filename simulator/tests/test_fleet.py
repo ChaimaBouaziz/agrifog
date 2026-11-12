@@ -106,3 +106,10 @@ def test_fixed_schedule_season():
     wet = run_fixed_schedule(bucket_from_config(cfg), hot_month, 6, 7, 200)
     assert wet.irrig_mm == pytest.approx(6 * 20)
     assert wet.stress_h < dry.stress_h
+
+
+def test_real_zones_are_not_simulated():
+    fake = FakeTime()
+    clock = SimClock(datetime(2025, 7, 1, 6), 3600, real_time=fake)
+    zones, devices = build_fleet(load_config("fog-b"), "fog-b", 10, clock, WEATHER)
+    assert "zw" not in zones and all(d.device != "esp-b-wokwi" for d in devices)
