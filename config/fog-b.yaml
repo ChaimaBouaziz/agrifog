@@ -36,6 +36,12 @@ zones:
     area_m2: 200
     flow_lpm: 20
 
+  - id: zw            # zone de démo pilotée par le VRAI firmware dans Wokwi (pas simulée)
+    devices: [esp-b-wokwi]
+    area_m2: 200
+    flow_lpm: 20
+    simulated: false
+
 mqtt:
   host: 127.0.0.1   # pas "localhost" : sous Windows il part en IPv6 vers WSL
   port: 1883

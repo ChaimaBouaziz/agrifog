@@ -216,3 +216,23 @@ def test_pump_alert_is_resolved_when_water_flows_again():
     eng.on_telemetry("z1", tel("06:30", "esp-a-02", 21.0, total=500, flow=0.0))
     eng.on_telemetry("z1", tel("06:45", "esp-a-02", 21.2, total=800, flow=20.0))
     assert [p for t, p in sent if t == "fog-a/alert" and p["resolved"] and p["type"] == "pump"]
+
+
+def test_real_wokwi_zone_and_simulated_zones_keep_separate_clocks():
+    sent = []
+    eng = IrrigationEngine(load_config("fog-b"), "fog-b", publish=lambda t, p: sent.append((t, p)))
+    for dev in ("esp-b-01", "esp-b-02", "esp-b-03"):            # simulateur : temps simulé (2025)
+        eng.on_heartbeat(dev, {"ts": "2025-07-01T06:00:00Z"})
+    eng.on_telemetry("z1", {"ts": "2025-07-01T06:00:00Z", "device": "esp-b-01", "soil_moisture": 15,
+                            "air_temp": 25, "air_humidity": 50, "flow_lpm": 0, "water_l_total": 0})
+    eng.on_telemetry("zw", {"ts": "2026-11-11T15:00:00Z", "device": "esp-b-wokwi", "soil_moisture": 15,
+                            "air_temp": 24, "air_humidity": 40, "flow_lpm": 0, "water_l_total": 0})
+    assert not [p for t, p in sent if t == "fog-b/alert" and p["type"] == "offline"]   # pas de fausse alerte
+
+
+def test_dry_wokwi_zone_gets_an_urgent_command():
+    sent = []
+    eng = IrrigationEngine(load_config("fog-b"), "fog-b", publish=lambda t, p: sent.append((t, p)))
+    eng.on_telemetry("zw", {"ts": "2026-11-11T15:00:00Z", "device": "esp-b-wokwi", "soil_moisture": 6.0,
+                            "air_temp": 24, "air_humidity": 40, "flow_lpm": 0, "water_l_total": 0})
+    assert [p for t, p in sent if t == "fog-b/zone/zw/cmd"]                           # urgence : arrosage

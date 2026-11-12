@@ -72,7 +72,7 @@ def main() -> None:
     weather = load_weather(default_weather_path())
     rng = random.Random(args.seed if args.seed is not None else sum(map(ord, args.fog)))  # reproductible
     rows = []
-    for zone in cfg["zones"]:
+    for zone in (z for z in cfg["zones"] if z.get("simulated", True)):
         rows += zone_history(cfg, zone, weather, date.fromisoformat(args.start), args.days, rng, args.noise)
 
     out = REPO_ROOT / "data" / f"history_{args.fog}.csv"
