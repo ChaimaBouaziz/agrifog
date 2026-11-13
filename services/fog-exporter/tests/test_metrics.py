@@ -103,3 +103,9 @@ def test_unknown_topics_are_ignored():
     assert m.handle("fog-b/zone/z1/somethingelse", {}) is None
     assert m.handle("fog-a/zone/z1/telemetry", {"soil_moisture": 1}) is None   # pas mon fog
     assert m.handle("fog-b/zone/z1/cmd", {"action": "stop"}) is None
+
+
+def test_zone_counters_start_at_zero():
+    m, _ = make()
+    assert val(m, "agrifog_water_commands_total", fog="fog-b", zone="z1") == 0
+    assert val(m, "agrifog_valve_acks_total", fog="fog-b", zone="zw") == 0

@@ -193,7 +193,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(increase(agrifog_water_commands_total{fog=\"$fog\", zone=~\"$zone\"}[$__range])) or vector(0)",
+          "expr": "round(sum(increase(agrifog_water_commands_total{fog=\"$fog\", zone=~\"$zone\"}[$__range]))) or vector(0)",
           "legendFormat": "",
           "datasource": {
             "type": "prometheus",
@@ -716,7 +716,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (action, kind) (increase(agrifog_decisions_total{fog=\"$fog\", zone=~\"$zone\"}[$__range])) > 0",
+          "expr": "round(sum by (action, kind) (increase(agrifog_decisions_total{fog=\"$fog\", zone=~\"$zone\"}[$__range]))) > 0",
           "legendFormat": "{{action}} · {{kind}}",
           "datasource": {
             "type": "prometheus",

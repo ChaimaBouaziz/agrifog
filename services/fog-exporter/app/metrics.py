@@ -87,6 +87,9 @@ class FogMetrics:
             self.field_capacity.labels(fog, zone["id"]).set(cfg["soil"]["field_capacity_pct"])
             for dev in zone.get("devices", []):
                 self.zone_of_device[dev] = zone["id"]
+            # compteurs créés à 0 dès le départ : sinon Prometheus ne voit pas le 1er ordre (increase de 1 -> 1 = 0)
+            for counter in (self.commands, self.cmd_seconds, self.valve_acks):
+                counter.labels(fog, zone["id"])
         self.q_daily.labels(fog).set(cfg.get("domain", {}).get("daily_quota_l", 0))
 
     # ------------------------------------------------------------------ routing
