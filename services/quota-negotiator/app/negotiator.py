@@ -165,7 +165,12 @@ class QuotaNegotiator:
             day.release_done = True
             evening = evening_need_l(zones, self.crop, self.et0, et_fraction(h, EVENING_HOUR))
             spare = spare_to_release(day.allocated_l, day.used_l, evening)
-            # pas d'aller-retour : on ne rend pas d'eau à un voisin qui vient de nous céder la sienne
+            # on ne cède que ce qui MANQUE au voisin (son besoin annoncé - sa part) : si les deux fogs
+            # ont assez, personne ne cède (évite les cessions croisées à 10 h) ; et on ne rend pas
+            # d'eau à un voisin qui vient de nous céder la sienne.
+            theirs = day.their_request or {}
+            missing = max(0.0, float(theirs.get("need_l", 0)) - day.allocation.get(self.neighbour, 0.0))
+            spare = round(min(spare, missing), 1)
             if spare > 0 and day.mode == "négocié" and day.received_l == 0:
                 day.allocated_l -= spare
                 day.given_l += spare
