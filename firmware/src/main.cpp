@@ -41,11 +41,12 @@
 #ifndef WIFI_PASS
 #define WIFI_PASS ""
 #endif
-// Liste de brokers, essayés dans l'ordre : "hôte|IP de secours,hôte2|IP2,…" (IP facultative).
+// Liste de brokers, essayés dans l'ordre : "hôte@IP de secours,hôte2@IP2,…" (IP facultative).
+// Pas de "|" : sous Linux (CI), les options de compilation passent par un shell, où | est un tuyau.
 // Si le premier ne répond pas, l'ESP32 bascule sur le suivant, puis revient au premier
 // tous les RETURN_TO_PRIMARY réveils. IP de secours : le DNS du réseau Wokwi est parfois en panne.
 #ifndef MQTT_BROKERS
-#define MQTT_BROKERS "test.mosquitto.org|54.36.178.49,broker.hivemq.com"
+#define MQTT_BROKERS "test.mosquitto.org@54.36.178.49,broker.hivemq.com"
 #endif
 #ifndef MQTT_PORT
 #define MQTT_PORT 1883
@@ -265,7 +266,7 @@ void syncTime() {
   Serial.printf("[ntp] %s\r\n", timeSynced ? isoNow().c_str() : "pas d'heure (on continue)");
 }
 
-// "hôte|ip,hôte2|ip2" -> tableaux brokerHost / brokerIp
+// "hôte@ip,hôte2@ip2" -> tableaux brokerHost / brokerIp
 void parseBrokers() {
   String list = MQTT_BROKERS;
   brokerCount = 0;
@@ -275,7 +276,7 @@ void parseBrokers() {
     list = comma < 0 ? "" : list.substring(comma + 1);
     item.trim();
     if (!item.length()) continue;
-    int bar = item.indexOf('|');
+    int bar = item.indexOf('@');
     brokerHost[brokerCount] = bar < 0 ? item : item.substring(0, bar);
     brokerIp[brokerCount] = bar < 0 ? "" : item.substring(bar + 1);
     brokerCount++;

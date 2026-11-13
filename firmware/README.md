@@ -30,7 +30,7 @@ compte le volume commandé, ce qui permet au moteur de vérifier l'arrosage.
 
 ## v3 (semaine 4) : liste de brokers et ordre OTA
 
-* **Liste de brokers** (`MQTT_BROKERS` dans `platformio.ini`, `hôte|IP de secours,…`) : si le premier
+* **Liste de brokers** (`MQTT_BROKERS` dans `platformio.ini`, `hôte@IP de secours,…`) : si le premier
   ne répond pas, l'ESP32 **bascule** sur le suivant (`[mqtt] bascule vers …`), puis revient au
   principal tous les 20 réveils. Le Mosquitto de fog-b relaie les deux brokers publics
   (`relay-wokwi.conf` et `relay-wokwi-backup.conf`).
