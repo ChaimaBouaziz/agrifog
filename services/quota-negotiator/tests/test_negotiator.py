@@ -66,11 +66,12 @@ def test_silent_neighbour_means_isolated_half():
 def test_spare_is_given_to_the_neighbour_at_10h():
     bus, a, b = make_pair()
     a.on_decision({"et0": 6.5}); b.on_decision({"et0": 6.5})
-    feed(a, "03:00", 24.5); feed(b, "03:00", 17.5)       # les deux rentrent dans le quota : marge partagée
+    feed(a, "03:00", 21.0); feed(b, "03:00", 10.0)       # journée de pénurie : chacun reçoit moins que son besoin
     before_b = budgets(bus, "fog-b")[-1]["allocated_l"]
     feed(a, "10:00", 29.0)                               # arrosée ce matin : plus besoin de rien ce soir
     released = [p for t, p in bus.log if t == "domaine/quota/release/fog-a"]
-    assert released and released[0]["liters"] > 0
+    need_b = [p for t, p in bus.log if t == "domaine/quota/request/fog-b"][0]["need_l"]
+    assert released and 0 < released[0]["liters"] <= need_b - before_b   # seulement ce qui manque au voisin
     assert budgets(bus, "fog-b")[-1]["allocated_l"] == before_b + released[0]["liters"]
 
 
@@ -94,8 +95,16 @@ def test_request_is_retained_for_a_late_neighbour():
 def test_no_cession_back_to_a_neighbour_who_just_gave():
     bus, a, b = make_pair()
     a.on_decision({"et0": 6.5}); b.on_decision({"et0": 6.5})
-    feed(a, "03:00", 24.5); feed(b, "03:00", 17.5)
-    feed(b, "10:00", 18.0)                               # l'olivier n'a besoin de rien : il cède d'abord
+    feed(a, "03:00", 21.0); feed(b, "03:00", 10.0)
+    feed(b, "10:00", 18.0)                               # l'olivier a été arrosé : il cède à la tomate qui manque
     assert [p for t, p in bus.log if t == "domaine/quota/release/fog-b"]
     feed(a, "10:00", 29.0)                               # la tomate a maintenant trop… mais ne rend rien
     assert not [p for t, p in bus.log if t == "domaine/quota/release/fog-a"]
+
+
+def test_nobody_gives_when_both_have_enough():
+    bus, a, b = make_pair()
+    a.on_decision({"et0": 6.5}); b.on_decision({"et0": 6.5})
+    feed(a, "03:00", 27.0); feed(b, "03:00", 17.5)       # besoins faibles : chacun a assez avec sa part
+    feed(a, "10:00", 29.0); feed(b, "10:00", 18.0)
+    assert not [p for t, p in bus.log if t.startswith("domaine/quota/release/")]   # pas de cessions croisées
