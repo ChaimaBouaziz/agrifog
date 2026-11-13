@@ -140,7 +140,8 @@ class QuotaNegotiator:
             day.my_request = {"day": d.isoformat(), "fog": self.fog, "need_l": round(need, 1),
                               "priority": priority(zones, self.crop), "ts": now.isoformat()}
             day.requested_at = now
-            self.publish(topics.quota_request(self.fog), day.my_request, False)
+            # "retained" : un voisin qui démarre en retard retrouve la demande du jour sur le broker
+            self.publish(topics.quota_request(self.fog), day.my_request, True)
             print(f"[{d}] demande : {need:.0f} L, priorité {day.my_request['priority']}")
 
         if day.my_request and day.allocation is None:
@@ -164,7 +165,8 @@ class QuotaNegotiator:
             day.release_done = True
             evening = evening_need_l(zones, self.crop, self.et0, et_fraction(h, EVENING_HOUR))
             spare = spare_to_release(day.allocated_l, day.used_l, evening)
-            if spare > 0 and day.mode == "négocié":
+            # pas d'aller-retour : on ne rend pas d'eau à un voisin qui vient de nous céder la sienne
+            if spare > 0 and day.mode == "négocié" and day.received_l == 0:
                 day.allocated_l -= spare
                 day.given_l += spare
                 self.publish(topics.quota_release(self.fog), {"day": d.isoformat(), "fog": self.fog,

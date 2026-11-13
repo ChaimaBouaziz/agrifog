@@ -332,12 +332,12 @@
     {
       "type": "bargauge",
       "title": "Répartition du quota du jour (vue de chaque fog)",
-      "description": "Les deux fogs calculent la répartition chacun de leur côté : les barres doivent être identiques deux à deux.",
+      "description": "Lecture : « fog-a → fog-b » = la part de fog-b calculée par fog-a. Chaque fog calcule seul : les barres doivent être identiques deux à deux.",
       "targets": [
         {
           "refId": "A",
           "expr": "agrifog_quota_allocation_liters",
-          "legendFormat": "calculée par {{computed_by}} → {{fog}}",
+          "legendFormat": "{{computed_by}} → {{fog}}",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
