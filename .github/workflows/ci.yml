@@ -26,6 +26,7 @@ jobs:
           - services/pump-scheduler
           - services/fog-twin
           - services/ota-manager
+          - services/fog-exporter
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -77,6 +78,7 @@ jobs:
           - { name: ota-manager,       dockerfile: services/ota-manager/Dockerfile }
           - { name: fog-twin,          dockerfile: services/fog-twin/Dockerfile }
           - { name: pump-scheduler,    dockerfile: services/pump-scheduler/Dockerfile }
+          - { name: fog-exporter,      dockerfile: services/fog-exporter/Dockerfile }
     env:
       IMAGE: agrifog/${{ matrix.image.name }}:${{ github.sha }}
     steps:

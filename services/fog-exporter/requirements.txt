@@ -1,0 +1,2 @@
+prometheus-client>=0.20
+psutil>=5.9

@@ -1,0 +1,78 @@
+# Alertes de PLATEFORME (Prometheus -> Alertmanager).
+# Les alertes AGRONOMIQUES (fuite, pompe…) sont levées par irrigation-engine et envoyées par le bot
+# Telegram ; ici on les reprend aussi pour les voir au même endroit que l'état de l'infrastructure.
+groups:
+  - name: agrifog-plateforme
+    rules:
+      - alert: ExporterInjoignable
+        expr: up{job="agrifog"} == 0
+        for: 30s
+        labels: {severity: critical}
+        annotations:
+          summary: "fog-exporter ne répond plus : plus aucune métrique du fog"
+
+      - alert: AucuneTelemetrie
+        expr: sum(rate(agrifog_mqtt_messages_total{kind="telemetry"}[1m])) == 0
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "Aucune mesure reçue depuis 1 min (simulateur arrêté ou broker en panne ?)"
+
+      - alert: ESP32Muet
+        expr: time() - agrifog_device_last_seen_timestamp_seconds > 60
+        for: 30s
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.device }} ({{ $labels.fog }}) muet depuis {{ $value | humanizeDuration }}"
+
+      - alert: BatterieFaible
+        expr: agrifog_device_battery_volts < 3.3
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: "Batterie faible sur {{ $labels.device }} : {{ $value }} V"
+
+  - name: agrifog-cooperation
+    rules:
+      - alert: PontMQTTCoupe
+        expr: agrifog_bridge_up == 0
+        for: 1m
+        labels: {severity: critical}
+        annotations:
+          summary: "Pont MQTT {{ $labels.connection }} coupé sur {{ $labels.fog }}"
+
+      - alert: FogVoisinSilencieux
+        expr: time() - agrifog_fog_last_seen_timestamp_seconds > 60
+        for: 30s
+        labels: {severity: critical}
+        annotations:
+          summary: "Aucun signe de vie de {{ $labels.fog }} depuis 1 min (Tailscale coupé ou PC éteint ?)"
+
+      - alert: QuotaModeIsole
+        expr: agrifog_quota_negotiated == 0
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.fog }} est en mode isolé : 50 % du quota"
+
+      - alert: QuotaDesaccord
+        expr: (max by (fog) (agrifog_quota_allocation_liters) - min by (fog) (agrifog_quota_allocation_liters)) > 1
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "Les deux fogs ne publient pas la même répartition pour {{ $labels.fog }}"
+
+      - alert: QuotaDepasse
+        expr: agrifog_quota_used_liters > 1.05 * agrifog_quota_allocated_liters
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.fog }} a utilisé plus que sa part du quota"
+
+  - name: agrifog-irrigation
+    rules:
+      - alert: AlerteIrrigation
+        expr: agrifog_alert_active == 1
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.type }} sur {{ $labels.fog }} {{ $labels.zone }} {{ $labels.device }}"
