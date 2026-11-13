@@ -10,6 +10,7 @@ Commands sent while a device sleeps are not lost: persistent MQTT session
 
 import hashlib
 import json
+import re
 import random
 import threading
 import time
@@ -157,6 +158,11 @@ class VirtualESP32:
     fw_version: str = FW_VERSION
     ota_done: set = field(default_factory=set)        # ids déjà traités (QoS 1 : doublons possibles)
     outbox: list = field(default_factory=list)        # statuts OTA à publier au prochain réveil
+    # double partition simulée (comme l'ESP32 : app0 / app1) : on garde la version précédente
+    previous_version: str | None = None
+    defect: str | None = None          # firmware défectueux installé : "crash" ou "sensor"
+    boot_failures: int = 0
+    last_order: dict = field(default_factory=dict)
 
     # ---- payloads (pure functions, easy to test) ----
     def telemetry(self) -> dict:
@@ -221,8 +227,30 @@ class VirtualESP32:
             return out + [self._ota_status(order, "failed", f"taille {len(blob)} au lieu de {order['size']}")]
         if hashlib.sha256(blob).hexdigest() != str(order.get("sha256", "")).lower():
             return out + [self._ota_status(order, "failed", "empreinte SHA-256 incorrecte : firmware refusé")]
-        previous, self.fw_version, self.boot_s = self.fw_version, order["version"], time.time()   # flash + reboot
+        previous = self.fw_version                      # flash dans l'autre partition + reboot
+        self.previous_version, self.fw_version, self.boot_s = previous, order["version"], time.time()
+        found = re.search(rb"AGRIFOG-DEFECT:(crash|sensor)", blob)  # marqueur des firmwares de démo défectueux
+        self.defect, self.boot_failures, self.last_order = (found.group(1).decode() if found else None), 0, order
         return out + [self._ota_status(order, "installed", f"{previous} -> {self.fw_version}", previous)]
+
+    def boot(self) -> bool:
+        """One boot of the current firmware. False = it crashed (nothing is published).
+
+        Like the ESP32 bootloader with app rollback: a new firmware that crashes 3 times in a row
+        is abandoned, and the previous partition boots again.
+        """
+        if self.defect != "crash":
+            return True
+        self.boot_failures += 1
+        print(f"[{self.device}] firmware {self.fw_version} : plantage au démarrage ({self.boot_failures}/3)")
+        if self.boot_failures < 3 or not self.previous_version:
+            return False
+        bad, self.fw_version, self.previous_version = self.fw_version, self.previous_version, None
+        self.defect, self.boot_failures, self.boot_s = None, 0, time.time()
+        st = self._ota_status(self.last_order, "rolled_back", f"3 démarrages ratés : retour à {self.fw_version}", bad)
+        st["running"] = self.fw_version
+        self.outbox.append(st)
+        return True
 
     def drain_battery(self) -> None:
         # éveillé : ~80 mA, deep sleep : ~10 µA -> presque tout se joue pendant l'éveil
@@ -230,6 +258,9 @@ class VirtualESP32:
 
     # ---- one wake-up cycle ----
     def wake_once(self) -> None:
+        if not self.boot():                  # firmware qui plante : pas de WiFi, pas de message
+            self.cycles += 1
+            return
         client = mqtt.Client(
             mqtt.CallbackAPIVersion.VERSION2, client_id=self.device, clean_session=False
         )
@@ -274,7 +305,8 @@ class VirtualESP32:
                 print(f"[{self.device}] connecté au broker {host}")
             self.connected_to = host
         client.loop_start()
-        client.publish(topics.telemetry(self.fog, self.zone.id), json.dumps(self.telemetry()), qos=1)
+        if self.defect != "sensor":          # firmware défectueux "sensor" : il tourne, mais ne mesure plus rien
+            client.publish(topics.telemetry(self.fog, self.zone.id), json.dumps(self.telemetry()), qos=1)
         client.publish(topics.heartbeat(self.fog, self.device), json.dumps(self.heartbeat()), qos=1)
         time.sleep(AWAKE_S)
         while self.outbox:                   # statuts OTA en attente

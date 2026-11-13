@@ -81,6 +81,9 @@ class FogMetrics:
 
         self.ota = Counter("agrifog_ota_status_total", "Statuts OTA renvoyés par les ESP32",
                            ["fog", "version", "state"], registry=r)
+        self.campaign = Gauge("agrifog_ota_campaign_state", "Campagne OTA : état courant (1) par version",
+                              ["fog", "version", "state"], registry=r)
+        self._campaign_state: dict[str, str] = {}
         self.messages = Counter("agrifog_mqtt_messages_total", "Messages MQTT reçus par l'exporter", ["fog", "kind"], registry=r)
 
         self.zone_of_device: dict[str, str] = {}
@@ -99,7 +102,7 @@ class FogMetrics:
     def subscriptions(self) -> list[str]:
         f = self.fog
         return [topics.telemetry(f, "+"), topics.decision(f, "+"), topics.cmd(f, "+"), topics.valve(f, "+"),
-                topics.heartbeat(f, "+"), topics.ota_status(f, "+"), topics.alert(f), topics.quota_budget(f), topics.quota_usage(f),
+                topics.heartbeat(f, "+"), topics.ota_status(f, "+"), topics.ota_campaign(f), topics.alert(f), topics.quota_budget(f), topics.quota_usage(f),
                 "domaine/quota/allocation/+", "domaine/quota/request/+", "domaine/fog/+/status",
                 "domaine/fl/update/+", "$SYS/broker/connection/+/state"]
 
@@ -117,6 +120,14 @@ class FogMetrics:
         elif p[0] == f and len(p) == 5 and p[1] == "device" and p[3:] == ["ota", "status"]:
             self.ota.labels(f, str(payload.get("version")), str(payload.get("state"))).inc()
             kind = "ota_status"
+        elif topic == topics.ota_campaign(f):
+            v, st = str(payload.get("version")), str(payload.get("state"))
+            old = self._campaign_state.get(v)
+            if old and old != st:
+                self.campaign.remove(f, v, old)
+            self._campaign_state[v] = st
+            self.campaign.labels(f, v, st).set(1)
+            kind = "ota_campaign"
         elif topic == topics.alert(f):
             kind = self._alert(payload)
         elif topic == topics.quota_budget(f):

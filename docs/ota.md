@@ -18,4 +18,24 @@ ota-manager (fog)  ◄─ cli release fw-v0.3.0 : télécharge UNE fois, vérifi
 * Un firmware dont l'**empreinte SHA-256 ne correspond pas** est refusé deux fois : par
   ota-manager à l'ajout au catalogue, puis par l'ESP32 avant l'installation.
 * Grafana, tableau **Flotte ESP32** : « Versions du firmware déployées » et « Mises à jour OTA ».
-* Semaine 5 : **canary** (un ESP32, puis la flotte si ses heartbeats restent bons) et **rollback**.
+
+## Semaine 5 : canary + rollback
+
+```
+cli campaign 0.3.1
+  canary   : 0.3.1 sur UN ESP32 (esp-b-01)
+  observe  : 60 s — installé ? heartbeats ? MESURES ?
+     ├─ sain   -> rollout : le reste de la flotte -> done
+     └─ malade -> version BLOQUÉE (plus jamais déployée) + retour à l'ancienne version -> rolled_back
+```
+
+Deux niveaux de rollback, comme sur un vrai ESP32 (double partition app0 / app1) :
+
+| Firmware défectueux | Ce qui se passe | Qui annule |
+|---|---|---|
+| plante au démarrage (`crash`) | 3 démarrages ratés, l'ESP32 se tait | **l'ESP32** (bootloader) revient seul sur l'ancienne partition et envoie `rolled_back` |
+| démarre mais ne mesure plus (`sensor`) | heartbeats OK, plus aucune télémétrie | **ota-manager** constate l'absence de mesures et renvoie l'ancienne version |
+
+Dans les deux cas, la flotte ne reçoit jamais la version défectueuse : seul le canary est touché.
+Démo : `cli defect 0.3.0 0.3.1 crash` fabrique une version défectueuse (binaire marqué, SHA-256 propre).
+Grafana (Flotte) : panneau « Campagne OTA » ; Prometheus : alerte `OtaRollback`.

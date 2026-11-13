@@ -22,7 +22,8 @@
 | `{fog}/zone/{zone}/decision` | locale | irrigation-engine | `action` (water/wait), `kind`, `reason` (explication lisible), `moisture`, `et0` — publié quand la situation change |
 | `{fog}/device/{device}/heartbeat` | locale | ESP32 | `fw_version`, `battery_v`, `rssi`, `uptime_s`, `broker` (broker utilisé) |
 | `{fog}/device/{device}/ota` | locale | ota-manager | `id`, `version`, `url`, `sha256`, `size` (ordre de mise à jour) |
-| `{fog}/device/{device}/ota/status` | locale | ESP32 | `id`, `device`, `version`, `from`, `state` (`downloading`, `installed`, `skipped`, `failed`, `accepted`), `detail` |
+| `{fog}/device/{device}/ota/status` | locale | ESP32 | `id`, `device`, `version`, `from`, `state` (`downloading`, `installed`, `skipped`, `failed`, `accepted`, `rolled_back` + `running`), `detail` |
+| `{fog}/ota/campaign` | locale | ota-manager | `version`, `canary`, `state` (`canary`, `rollout`, `done`, `rolled_back`, `aborted`), `detail` |
 | `{fog}/zone/{zone}/valve` | locale | ESP32 vanne | accusé d'exécution : `id`, `device`, `state`, `opened`, `until`, `water_l_total` |
 | `{fog}/weather/forecast` | locale, retained | simulateur (puis passerelle météo) | `ts`, `rain_next_24h_mm`, `source` |
 | `{fog}/sim/fault` | locale | humain / bot Telegram | injection de pannes (voir `simulator/simulator/faults.py`) |

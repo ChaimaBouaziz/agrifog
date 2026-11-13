@@ -119,3 +119,11 @@ def test_ota_status_and_version_change():
     assert val(m, "agrifog_ota_status_total", fog="fog-b", version="0.3.0", state="installed") == 1
     assert val(m, "agrifog_device_firmware_info", fog="fog-b", device="esp-b-01", version="0.3.0") == 1
     assert val(m, "agrifog_device_firmware_info", fog="fog-b", device="esp-b-01", version="0.1.0") is None
+
+
+def test_ota_campaign_state_follows_the_campaign():
+    m, _ = make()
+    m.handle("fog-b/ota/campaign", {"version": "0.3.1", "state": "canary"})
+    m.handle("fog-b/ota/campaign", {"version": "0.3.1", "state": "rolled_back"})
+    assert val(m, "agrifog_ota_campaign_state", fog="fog-b", version="0.3.1", state="rolled_back") == 1
+    assert val(m, "agrifog_ota_campaign_state", fog="fog-b", version="0.3.1", state="canary") is None

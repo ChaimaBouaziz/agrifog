@@ -8,6 +8,9 @@
     GET  /firmware/{version}.bin      le binaire, servi aux ESP32 du fog (miroir local)
     POST /deploy                      {"version": "0.3.0", "devices": ["esp-b-01"]}  (ou "all")
     GET  /devices                     version réellement installée + dernier statut OTA par ESP32
+    POST /campaigns                   {"version": "0.3.1", "canary": "esp-b-01", "observe_s": 60}
+    GET  /campaigns                   campagne en cours : canary -> rollout -> done | rolled_back
+    POST /releases/defect             DÉMO : {"base": "0.3.0", "version": "0.3.1", "kind": "crash"|"sensor"}
 
 Plus simple depuis PowerShell : python -m app.cli … (voir app/cli.py).
 """
@@ -55,6 +58,7 @@ def run_mqtt(host: str, port: int, stop: threading.Event) -> None:
         print(f"[mqtt] connecté ({rc}) à {host}:{port}")
         c.subscribe(topics.heartbeat(FOG, "+"), qos=1)
         c.subscribe(topics.ota_status(FOG, "+"), qos=1)
+        c.subscribe(topics.telemetry(FOG, "+"), qos=1)      # le canary mesure-t-il encore ?
 
     def on_message(c, u, m):
         parts = m.topic.split("/")          # fog/device/<dev>/heartbeat  |  fog/device/<dev>/ota/status
@@ -62,7 +66,9 @@ def run_mqtt(host: str, port: int, stop: threading.Event) -> None:
             msg = json.loads(m.payload)
         except ValueError:
             return
-        if parts[-1] == "heartbeat":
+        if parts[-1] == "telemetry":
+            manager.on_telemetry(msg.get("device", ""))
+        elif parts[-1] == "heartbeat":
             manager.on_heartbeat(parts[2], msg)
         elif parts[-2:] == ["ota", "status"]:
             manager.on_status(parts[2], msg)
@@ -73,7 +79,8 @@ def run_mqtt(host: str, port: int, stop: threading.Event) -> None:
     client.connect_async(host, port)
     client.loop_start()
     _client = client
-    stop.wait()
+    while not stop.wait(2):            # fait avancer la campagne canary
+        manager.tick()
     client.loop_stop()
 
 
@@ -104,6 +111,18 @@ class Deploy(BaseModel):
     devices: list[str] | str
 
 
+class NewCampaign(BaseModel):
+    version: str
+    canary: str | None = None
+    observe_s: float = 60
+
+
+class Defect(BaseModel):
+    base: str
+    version: str
+    kind: str = "crash"
+
+
 @app.get("/health")
 def health() -> dict:
     return {"service": SERVICE, "fog": FOG, "status": "ok"}
@@ -130,6 +149,14 @@ def add_release(body: NewRelease) -> dict:
     return rel.__dict__
 
 
+@app.post("/releases/defect")
+def add_defect(body: Defect) -> dict:
+    try:
+        return catalog.make_defect(body.base, body.version, body.kind).__dict__
+    except (KeyError, ValueError) as e:
+        raise HTTPException(400, str(e)) from e
+
+
 @app.get("/firmware/{version}.bin")
 def firmware(version: str):
     path = catalog.path(version)
@@ -152,3 +179,18 @@ def deploy(body: Deploy) -> dict:
 @app.get("/devices")
 def devices() -> dict:
     return manager.snapshot()
+
+
+@app.post("/campaigns")
+def start_campaign(body: NewCampaign) -> dict:
+    try:
+        return manager.start_campaign(body.version, body.canary, body.observe_s)
+    except KeyError as e:
+        raise HTTPException(404, str(e)) from e
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
+@app.get("/campaigns")
+def campaign() -> dict:
+    return manager.status() or {}

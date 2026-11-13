@@ -25,6 +25,12 @@ groups:
         annotations:
           summary: "{{ $labels.device }} ({{ $labels.fog }}) muet depuis {{ $value | humanizeDuration }}"
 
+      - alert: OtaRollback
+        expr: agrifog_ota_campaign_state{state=~"rolled_back|aborted"} == 1
+        labels: {severity: warning}
+        annotations:
+          summary: "Firmware {{ $labels.version }} refusé par le canary sur {{ $labels.fog }} : version bloquée"
+
       - alert: BatterieFaible
         expr: agrifog_device_battery_volts < 3.3
         for: 1m
