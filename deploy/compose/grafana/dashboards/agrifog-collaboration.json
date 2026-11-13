@@ -250,7 +250,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "max(max by (fog) (agrifog_quota_allocation_liters) - min by (fog) (agrifog_quota_allocation_liters))",
+          "expr": "max((max by (fog) (agrifog_quota_allocation_liters) - min by (fog) (agrifog_quota_allocation_liters)) and on (fog) (count by (fog) (agrifog_quota_allocation_liters) == 2))",
           "legendFormat": "",
           "datasource": {
             "type": "prometheus",
@@ -298,7 +298,8 @@
                 "value": 1
               }
             ]
-          }
+          },
+          "noValue": "attend les 2 fogs"
         },
         "overrides": []
       },
