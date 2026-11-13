@@ -1,0 +1,649 @@
+{
+  "uid": "agrifog-flotte",
+  "title": "AgriFog — Flotte ESP32",
+  "description": "État des nœuds capteurs : vivants, batterie, signal, version du firmware.",
+  "tags": [
+    "agrifog"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "refresh": "5s",
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "fog",
+        "label": "Fog",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": {
+          "query": "label_values(agrifog_moisture_threshold_pct, fog)",
+          "refId": "fog"
+        },
+        "definition": "label_values(agrifog_moisture_threshold_pct, fog)",
+        "refresh": 2,
+        "includeAll": false,
+        "multi": false,
+        "hide": 0,
+        "current": {},
+        "options": [],
+        "sort": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "ESP32 vivants (< 60 s)",
+      "description": "Ont envoyé un message dans la dernière minute",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "count(time() - agrifog_device_last_seen_timestamp_seconds{fog=\"$fog\"} < 60) or vector(0)",
+          "legendFormat": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "",
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#3b9b5a",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      },
+      "id": 1,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "ESP32 muets (> 60 s)",
+      "description": "Aucun message depuis plus d'une minute",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "count(time() - agrifog_device_last_seen_timestamp_seconds{fog=\"$fog\"} > 60) or vector(0)",
+          "legendFormat": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "",
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#3b9b5a",
+                "value": null
+              },
+              {
+                "color": "#d64545",
+                "value": 1
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      },
+      "id": 2,
+      "gridPos": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Batterie la plus faible",
+      "description": "",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "min(agrifog_device_battery_volts{fog=\"$fog\"})",
+          "legendFormat": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "volt",
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#d64545",
+                "value": null
+              },
+              {
+                "color": "#eb6834",
+                "value": 3.3
+              },
+              {
+                "color": "#3b9b5a",
+                "value": 3.6
+              }
+            ]
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      },
+      "id": 3,
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Messages reçus / s",
+      "description": "",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(agrifog_mqtt_messages_total{fog=\"$fog\"}[1m]))",
+          "legendFormat": "",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "",
+          "mappings": [],
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#2a78d6",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "orientation": "auto"
+      },
+      "id": 4,
+      "gridPos": {
+        "x": 18,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "bargauge",
+      "title": "Dernier message il y a… (s)",
+      "description": "Un ESP32 se réveille toutes les 10 s : au-delà de 60 s, il est muet.",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "time() - agrifog_device_last_seen_timestamp_seconds{fog=\"$fog\"}",
+          "legendFormat": "{{device}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#3b9b5a",
+                "value": null
+              },
+              {
+                "color": "#eb6834",
+                "value": 30
+              },
+              {
+                "color": "#d64545",
+                "value": 60
+              }
+            ]
+          },
+          "min": 0,
+          "max": 90
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true,
+        "valueMode": "color",
+        "namePlacement": "left",
+        "sizing": "auto"
+      },
+      "id": 5,
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 8,
+        "h": 12
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "bargauge",
+      "title": "Batterie (V)",
+      "description": "",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "agrifog_device_battery_volts{fog=\"$fog\"}",
+          "legendFormat": "{{device}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "volt",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#d64545",
+                "value": null
+              },
+              {
+                "color": "#eb6834",
+                "value": 3.3
+              },
+              {
+                "color": "#3b9b5a",
+                "value": 3.6
+              }
+            ]
+          },
+          "min": 3.0,
+          "max": 4.2
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true,
+        "valueMode": "color",
+        "namePlacement": "left",
+        "sizing": "auto"
+      },
+      "id": 6,
+      "gridPos": {
+        "x": 8,
+        "y": 4,
+        "w": 8,
+        "h": 12
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "bargauge",
+      "title": "Signal WiFi (dBm)",
+      "description": "",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "agrifog_device_rssi_dbm{fog=\"$fog\"}",
+          "legendFormat": "{{device}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dBm",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#d64545",
+                "value": null
+              },
+              {
+                "color": "#eb6834",
+                "value": -85
+              },
+              {
+                "color": "#3b9b5a",
+                "value": -70
+              }
+            ]
+          },
+          "min": -100,
+          "max": -30
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true,
+        "valueMode": "color",
+        "namePlacement": "left",
+        "sizing": "auto"
+      },
+      "id": 7,
+      "gridPos": {
+        "x": 16,
+        "y": 4,
+        "w": 8,
+        "h": 12
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "bargauge",
+      "title": "Versions du firmware déployées",
+      "description": "Nombre d'ESP32 par version (utile pendant un déploiement OTA progressif).",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "count by (version) (agrifog_device_firmware_info{fog=\"$fog\"})",
+          "legendFormat": "v{{version}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#2a78d6",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true,
+        "valueMode": "color",
+        "namePlacement": "left",
+        "sizing": "auto"
+      },
+      "id": 8,
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 8,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Messages MQTT reçus par type",
+      "description": "Messages par seconde (moyenne sur 1 min)",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (kind) (rate(agrifog_mqtt_messages_total{fog=\"$fog\"}[1m]))",
+          "legendFormat": "{{kind}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "never",
+            "drawStyle": "line",
+            "spanNulls": true,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "none"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "id": 9,
+      "gridPos": {
+        "x": 8,
+        "y": 16,
+        "w": 16,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    }
+  ],
+  "annotations": {
+    "list": []
+  },
+  "links": [
+    {
+      "title": "Dashboards AgriFog",
+      "type": "dashboards",
+      "tags": [
+        "agrifog"
+      ],
+      "asDropdown": true
+    }
+  ]
+}

@@ -26,7 +26,7 @@
 | `{fog}/weather/forecast` | locale, retained | simulateur (puis passerelle météo) | `ts`, `rain_next_24h_mm`, `source` |
 | `{fog}/sim/fault` | locale | humain / bot Telegram | injection de pannes (voir `simulator/simulator/faults.py`) |
 | `{fog}/alert` | locale | irrigation-engine | `ts`, `type` (leak, pump, no_rise, sensor, offline, valve), `zone`, `device`, `msg`, `resolved` |
-| `domaine/fog/{fog}/status` | partagée, retained | chaque fog | `alive`, `cpu`, `ram`, `version` |
+| `domaine/fog/{fog}/status` | partagée, retained | fog-exporter (toutes les 10 s ; dernière volonté `alive:false`) | `fog`, `alive`, `cpu`, `ram`, `version`, `unix` (heure réelle d'envoi) |
 | `domaine/air/{fog}` | partagée | chaque fog | `air_temp`, `air_humidity` |
 | `domaine/quota/request/{fog}` | partagée | quota-negotiator | `day`, `fog`, `need_l`, `priority`, `ts` |
 | `domaine/quota/allocation/{fog}` | partagée, retained | quota-negotiator | `day`, `quota_l`, `allocation` `{fog: litres}`, `mode` (négocié / isolé), `computed_by` |

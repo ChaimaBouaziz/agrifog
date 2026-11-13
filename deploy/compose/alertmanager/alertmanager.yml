@@ -1,0 +1,22 @@
+# Alertmanager d'un fog : regroupe et route les alertes de Prometheus.
+# Par défaut elles sont visibles sur http://localhost:9093 (pas d'envoi externe).
+route:
+  receiver: journal
+  group_by: [alertname, fog]
+  group_wait: 10s
+  group_interval: 1m
+  repeat_interval: 1h
+
+receivers:
+  - name: journal        # aucune notification : on consulte l'interface web d'Alertmanager
+
+  # Option : recevoir aussi les alertes de plateforme sur Telegram.
+  # Copier ce fichier en alertmanager.local.yml (non versionné), remplacer "receiver: journal"
+  # par "receiver: telegram", décommenter et mettre le jeton du bot + votre chat_id.
+  # NE JAMAIS committer le jeton.
+  # - name: telegram
+  #   telegram_configs:
+  #     - bot_token: "123456789:AA..."
+  #       chat_id: 123456789
+  #       parse_mode: ""
+  #       message: '{{ range .Alerts }}{{ if eq .Status "firing" }}🔥{{ else }}✅{{ end }} {{ .Annotations.summary }}{{ "\n" }}{{ end }}'
