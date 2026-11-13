@@ -1,0 +1,50 @@
+# Publier un firmware : un tag fw-vX.Y.Z -> compilation, empreinte SHA-256, Release GitHub
+# (firmware.bin + firmware.bin.sha256). ota-manager l'ajoute ensuite au catalogue du fog :
+#   python -m app.cli release fw-vX.Y.Z
+#
+#   git tag fw-v0.3.0 ; git push origin fw-v0.3.0
+name: firmware-release
+
+on:
+  push:
+    tags: ["fw-v*"]
+
+permissions:
+  contents: write          # créer la Release et y joindre les fichiers
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Le tag doit correspondre à FW_VERSION (firmware/platformio.ini)
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#fw-v}"
+          INI_VERSION=$(sed -n 's/.*-DFW_VERSION=\\"\([^\\]*\)\\".*/\1/p' firmware/platformio.ini)
+          echo "tag $TAG_VERSION / platformio.ini $INI_VERSION"
+          test "$TAG_VERSION" = "$INI_VERSION" || { echo "::error::mettre FW_VERSION=$TAG_VERSION dans platformio.ini"; exit 1; }
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ hashFiles('firmware/platformio.ini') }}
+      - run: pip install platformio
+      - run: pio run -d firmware
+
+      - name: Empreinte SHA-256
+        run: |
+          cd firmware/.pio/build/esp32dev
+          sha256sum firmware.bin | tee firmware.bin.sha256
+
+      - name: Release GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd firmware/.pio/build/esp32dev
+          gh release create "$GITHUB_REF_NAME" firmware.bin firmware.bin.sha256 \
+            --title "Firmware ${GITHUB_REF_NAME#fw-v}" \
+            --notes "Firmware ESP32 AgriFog ${GITHUB_REF_NAME#fw-v} — SHA-256 : $(cut -d' ' -f1 firmware.bin.sha256)"

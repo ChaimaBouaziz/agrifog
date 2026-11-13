@@ -21,7 +21,13 @@ def heartbeat(fog: str, device: str) -> str:
 
 
 def ota(fog: str, device: str) -> str:
+    """Ordre de mise à jour (ota-manager -> ESP32) : id, version, url, sha256, size."""
     return f"{fog}/device/{device}/ota"
+
+
+def ota_status(fog: str, device: str) -> str:
+    """Avancement de la mise à jour (ESP32 -> ota-manager) : downloading, installed, failed…"""
+    return f"{fog}/device/{device}/ota/status"
 
 
 def alert(fog: str) -> str:

@@ -575,6 +575,68 @@
       }
     },
     {
+      "type": "bargauge",
+      "title": "Mises à jour OTA : statuts reçus",
+      "description": "downloading / installed / failed / skipped, renvoyés par les ESP32 (depuis le démarrage de l'exporter).",
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (version, state) (agrifog_ota_status_total{fog=\"$fog\"})",
+          "legendFormat": "v{{version}} · {{state}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#2a78d6",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "showUnfilled": true,
+        "valueMode": "color",
+        "namePlacement": "left",
+        "sizing": "auto"
+      },
+      "id": 9,
+      "gridPos": {
+        "x": 8,
+        "y": 16,
+        "w": 8,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      }
+    },
+    {
       "type": "timeseries",
       "title": "Messages MQTT reçus par type",
       "description": "Messages par seconde (moyenne sur 1 min)",
@@ -620,11 +682,11 @@
           "sort": "desc"
         }
       },
-      "id": 9,
+      "id": 10,
       "gridPos": {
-        "x": 8,
+        "x": 16,
         "y": 16,
-        "w": 16,
+        "w": 8,
         "h": 8
       },
       "datasource": {

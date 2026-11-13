@@ -79,9 +79,12 @@ class FogMetrics:
         self.fl_round = Gauge("agrifog_fl_round", "Dernier tour d'apprentissage fédéré envoyé", ["fog"], registry=r)
         self.fl_mae = Gauge("agrifog_fl_mae_pct", "Erreur moyenne locale du modèle fédéré (% vol)", ["fog"], registry=r)
 
+        self.ota = Counter("agrifog_ota_status_total", "Statuts OTA renvoyés par les ESP32",
+                           ["fog", "version", "state"], registry=r)
         self.messages = Counter("agrifog_mqtt_messages_total", "Messages MQTT reçus par l'exporter", ["fog", "kind"], registry=r)
 
         self.zone_of_device: dict[str, str] = {}
+        self._fw_of: dict[tuple, str] = {}
         for zone in cfg.get("zones", []):
             self.threshold.labels(fog, zone["id"]).set(cfg["crop"]["moisture_threshold_pct"])
             self.field_capacity.labels(fog, zone["id"]).set(cfg["soil"]["field_capacity_pct"])
@@ -96,7 +99,7 @@ class FogMetrics:
     def subscriptions(self) -> list[str]:
         f = self.fog
         return [topics.telemetry(f, "+"), topics.decision(f, "+"), topics.cmd(f, "+"), topics.valve(f, "+"),
-                topics.heartbeat(f, "+"), topics.alert(f), topics.quota_budget(f), topics.quota_usage(f),
+                topics.heartbeat(f, "+"), topics.ota_status(f, "+"), topics.alert(f), topics.quota_budget(f), topics.quota_usage(f),
                 "domaine/quota/allocation/+", "domaine/quota/request/+", "domaine/fog/+/status",
                 "domaine/fl/update/+", "$SYS/broker/connection/+/state"]
 
@@ -111,6 +114,9 @@ class FogMetrics:
                     "valve": self._valve}.get(p[3], lambda *a: None)(p[2], payload, now)
         elif p[0] == f and len(p) == 4 and p[1] == "device" and p[3] == "heartbeat":
             kind = self._heartbeat(p[2], payload, now)
+        elif p[0] == f and len(p) == 5 and p[1] == "device" and p[3:] == ["ota", "status"]:
+            self.ota.labels(f, str(payload.get("version")), str(payload.get("state"))).inc()
+            kind = "ota_status"
         elif topic == topics.alert(f):
             kind = self._alert(payload)
         elif topic == topics.quota_budget(f):
@@ -168,6 +174,10 @@ class FogMetrics:
             if m.get(key) is not None:
                 gauge.labels(*lbl).set(float(m[key]))
         if m.get("fw_version"):
+            old = self._fw_of.get(lbl)
+            if old and old != m["fw_version"]:          # mise à jour OTA : l'ancienne version disparaît
+                self.fw.remove(*lbl, old)
+            self._fw_of[lbl] = str(m["fw_version"])
             self.fw.labels(*lbl, str(m["fw_version"])).set(1)
         self.last_seen.labels(*lbl).set(now)
         return "heartbeat"

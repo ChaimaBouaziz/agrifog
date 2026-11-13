@@ -24,7 +24,7 @@
 
 // ------------------------------------------- defaults (overridden in platformio.ini)
 #ifndef FW_VERSION
-#define FW_VERSION "0.2.0"
+#define FW_VERSION "0.3.0"
 #endif
 #ifndef FOG_ID
 #define FOG_ID "fog-b"
@@ -41,15 +41,18 @@
 #ifndef WIFI_PASS
 #define WIFI_PASS ""
 #endif
-#ifndef MQTT_HOST
-#define MQTT_HOST "test.mosquitto.org"
+// Liste de brokers, essayés dans l'ordre : "hôte@IP de secours,hôte2@IP2,…" (IP facultative).
+// Pas de "|" : sous Linux (CI), les options de compilation passent par un shell, où | est un tuyau.
+// Si le premier ne répond pas, l'ESP32 bascule sur le suivant, puis revient au premier
+// tous les RETURN_TO_PRIMARY réveils. IP de secours : le DNS du réseau Wokwi est parfois en panne.
+#ifndef MQTT_BROKERS
+#define MQTT_BROKERS "test.mosquitto.org@54.36.178.49,broker.hivemq.com"
 #endif
 #ifndef MQTT_PORT
 #define MQTT_PORT 1883
 #endif
-#ifndef MQTT_HOST_IP
-#define MQTT_HOST_IP "54.36.178.49"   // IP de secours de test.mosquitto.org (si le DNS de Wokwi échoue)
-#endif
+#define MAX_BROKERS 4
+#define RETURN_TO_PRIMARY 20
 #ifndef TOPIC_PREFIX
 #define TOPIC_PREFIX ""
 #endif
@@ -72,13 +75,17 @@ RTC_DATA_ATTR uint32_t bootCount = 0;
 RTC_DATA_ATTR float waterTotalL = 0;
 RTC_DATA_ATTR float batteryV = 4.10;
 RTC_DATA_ATTR char lastCmdId[64] = "";
+RTC_DATA_ATTR char lastOtaId[64] = "";
+RTC_DATA_ATTR uint8_t brokerIdx = 0;         // broker en cours (0 = le principal)
 RTC_DATA_ATTR bool timeSynced = false;
 
 DHT dht(DHT_PIN, DHT22);
 WiFiClient net;
 PubSubClient mqtt(net);
 
-String topicTelemetry, topicHeartbeat, topicCmd, topicValve;
+String topicTelemetry, topicHeartbeat, topicCmd, topicValve, topicOta, topicOtaStatus;
+String brokerHost[MAX_BROKERS], brokerIp[MAX_BROKERS];
+int brokerCount = 0;
 uint32_t valveUntilMs = 0;         // millis() de fermeture de la vanne (0 = fermée)
 uint32_t valveOpenedMs = 0;
 float valveLitersToDeliver = 0;
@@ -137,8 +144,39 @@ void publishHeartbeat() {
   doc["rssi"] = WiFi.RSSI();
   doc["uptime_s"] = (uint32_t)(bootCount * PERIOD_S + millis() / 1000);
   doc["cycles"] = bootCount;
-  doc["broker"] = MQTT_HOST;
+  doc["broker"] = brokerHost[brokerIdx];
   publishJson(topicHeartbeat, doc);
+}
+
+// ------------------------------------------------------------- OTA order (v1)
+// L'ordre est reçu, contrôlé et acquitté. Dans Wokwi on ne reflashe pas la carte : le firmware
+// annonce l'ordre accepté ; le téléchargement + flash réels sont faits sur la flotte simulée.
+void handleOta(JsonDocument &doc) {
+  const char *id = doc["id"] | "";
+  const char *version = doc["version"] | "";
+  const char *sha = doc["sha256"] | "";
+  if (id[0] != '\0' && strcmp(id, lastOtaId) == 0) return;      // doublon QoS 1
+  strncpy(lastOtaId, id, sizeof(lastOtaId) - 1);
+
+  JsonDocument st;
+  st["id"] = id;
+  st["device"] = DEVICE_ID;
+  st["version"] = version;
+  st["from"] = FW_VERSION;
+  st["ts"] = isoNow();
+  if (strcmp(version, FW_VERSION) == 0) {
+    st["state"] = "skipped";
+    st["detail"] = "déjà en " FW_VERSION;
+  } else if (strlen(sha) != 64) {
+    st["state"] = "failed";
+    st["detail"] = "ordre invalide : SHA-256 absent";
+  } else {
+    st["state"] = "accepted";
+    st["detail"] = "ordre reçu (pas de flash réel dans Wokwi)";
+  }
+  publishJson(topicOtaStatus, st);
+  Serial.printf("[ota] %s -> %s : %s (sha256 %.12s…)\r\n", FW_VERSION, version,
+                (const char *)st["state"], sha);
 }
 
 // ---------------------------------------------------------- water command -> relay
@@ -146,6 +184,10 @@ void onMessage(char *topic, byte *payload, unsigned int length) {
   JsonDocument doc;
   if (deserializeJson(doc, payload, length)) {
     Serial.println("[cmd] JSON illisible");
+    return;
+  }
+  if (topicOta == topic) {
+    handleOta(doc);
     return;
   }
   const char *action = doc["action"] | "";
@@ -224,34 +266,57 @@ void syncTime() {
   Serial.printf("[ntp] %s\r\n", timeSynced ? isoNow().c_str() : "pas d'heure (on continue)");
 }
 
-// Le DNS du réseau Wokwi est parfois en panne (c'est lui qui faisait planter SNTP) :
-// on résout le nom nous-mêmes et, en cas d'échec, on prend l'IP de secours.
-void setBroker() {
-  static IPAddress ip;
-  static bool resolved = false;
-  if (!resolved) {
-    if (WiFi.hostByName(MQTT_HOST, ip) == 1 && ip != IPAddress(0, 0, 0, 0)) {
-      Serial.printf("[dns] %s -> %s\r\n", MQTT_HOST, ip.toString().c_str());
-    } else {
-      ip.fromString(MQTT_HOST_IP);
-      Serial.printf("[dns] échec pour %s, IP de secours %s\r\n", MQTT_HOST, MQTT_HOST_IP);
-    }
-    resolved = true;
+// "hôte@ip,hôte2@ip2" -> tableaux brokerHost / brokerIp
+void parseBrokers() {
+  String list = MQTT_BROKERS;
+  brokerCount = 0;
+  while (list.length() && brokerCount < MAX_BROKERS) {
+    int comma = list.indexOf(',');
+    String item = comma < 0 ? list : list.substring(0, comma);
+    list = comma < 0 ? "" : list.substring(comma + 1);
+    item.trim();
+    if (!item.length()) continue;
+    int bar = item.indexOf('@');
+    brokerHost[brokerCount] = bar < 0 ? item : item.substring(0, bar);
+    brokerIp[brokerCount] = bar < 0 ? "" : item.substring(bar + 1);
+    brokerCount++;
   }
-  mqtt.setServer(ip, MQTT_PORT);
+  if (brokerIdx >= brokerCount) brokerIdx = 0;
 }
 
-bool connectMqtt() {
-  setBroker();
-  mqtt.setCallback(onMessage);
-  mqtt.setBufferSize(512);
-  // session persistante (cleanSession = false) : les ordres envoyés pendant le sommeil attendent
-  if (!mqtt.connect(DEVICE_ID, nullptr, nullptr, nullptr, 0, false, nullptr, false)) {
-    Serial.printf("[mqtt] échec de connexion à %s (état %d)\r\n", MQTT_HOST, mqtt.state());
+// On résout le nom nous-mêmes (le DNS du réseau Wokwi est parfois en panne) ; sinon IP de secours.
+bool setBroker(int i) {
+  IPAddress ip;
+  if (WiFi.hostByName(brokerHost[i].c_str(), ip) == 1 && ip != IPAddress(0, 0, 0, 0)) {
+    Serial.printf("[dns] %s -> %s\r\n", brokerHost[i].c_str(), ip.toString().c_str());
+  } else if (brokerIp[i].length() && ip.fromString(brokerIp[i])) {
+    Serial.printf("[dns] échec pour %s, IP de secours %s\r\n", brokerHost[i].c_str(), brokerIp[i].c_str());
+  } else {
+    Serial.printf("[dns] échec pour %s, pas d'IP de secours\r\n", brokerHost[i].c_str());
     return false;
   }
-  mqtt.subscribe(topicCmd.c_str(), 1);
+  mqtt.setServer(ip, MQTT_PORT);
   return true;
+}
+
+// Essaie le broker courant, puis les suivants : la bascule est automatique.
+bool connectMqtt() {
+  mqtt.setCallback(onMessage);
+  mqtt.setBufferSize(512);
+  for (int attempt = 0; attempt < brokerCount; attempt++) {
+    int i = brokerIdx;
+    // session persistante (cleanSession = false) : les ordres envoyés pendant le sommeil attendent
+    if (setBroker(i) && mqtt.connect(DEVICE_ID, nullptr, nullptr, nullptr, 0, false, nullptr, false)) {
+      mqtt.subscribe(topicCmd.c_str(), 1);
+      mqtt.subscribe(topicOta.c_str(), 1);
+      if (i != 0) Serial.printf("[mqtt] secours : connecté à %s\r\n", brokerHost[i].c_str());
+      return true;
+    }
+    Serial.printf("[mqtt] échec de connexion à %s (état %d)\r\n", brokerHost[i].c_str(), mqtt.state());
+    brokerIdx = (brokerIdx + 1) % brokerCount;
+    if (brokerCount > 1) Serial.printf("[mqtt] bascule vers %s\r\n", brokerHost[brokerIdx].c_str());
+  }
+  return false;
 }
 
 // Vrai deep sleep : la RAM est perdue, seules les variables RTC_DATA_ATTR survivent.
@@ -312,6 +377,11 @@ void cycle() {
   } else if (!mqtt.connected()) {
     if (!connectMqtt()) return;
     Serial.println("[mqtt] reconnecté");
+  } else if (brokerIdx != 0 && bootCount % RETURN_TO_PRIMARY == 0) {
+    Serial.printf("[mqtt] retour au broker principal %s\r\n", brokerHost[0].c_str());
+    mqtt.disconnect();
+    brokerIdx = 0;
+    if (!connectMqtt()) return;
   }
   delay(500);                       // laisser arriver un ordre en attente
   mqtt.loop();
@@ -343,6 +413,9 @@ void setup() {
   topicCmd = base + "/zone/" + ZONE_ID + "/cmd";
   topicValve = base + "/zone/" + ZONE_ID + "/valve";
   topicHeartbeat = base + "/device/" + DEVICE_ID + "/heartbeat";
+  topicOta = base + "/device/" + DEVICE_ID + "/ota";
+  topicOtaStatus = base + "/device/" + DEVICE_ID + "/ota/status";
+  parseBrokers();
 }
 
 // Avec FW_DEEP_SLEEP=1, goToSleep() ne revient jamais : la carte redémarre dans setup() au réveil.
