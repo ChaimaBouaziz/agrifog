@@ -559,7 +559,7 @@
         "displayMode": "basic",
         "showUnfilled": true,
         "valueMode": "color",
-        "namePlacement": "left",
+        "namePlacement": "top",
         "sizing": "auto"
       },
       "id": 8,
@@ -582,7 +582,7 @@
         {
           "refId": "A",
           "expr": "sum by (version, state) (agrifog_ota_status_total{fog=\"$fog\"})",
-          "legendFormat": "v{{version}} · {{state}}",
+          "legendFormat": "{{state}} · v{{version}}",
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -621,7 +621,7 @@
         "displayMode": "basic",
         "showUnfilled": true,
         "valueMode": "color",
-        "namePlacement": "left",
+        "namePlacement": "top",
         "sizing": "auto"
       },
       "id": 9,
