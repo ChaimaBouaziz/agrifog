@@ -35,6 +35,7 @@ docker compose --profile monitoring up -d --build
 | ExporterInjoignable | plus de métriques du fog depuis 30 s |
 | AucuneTelemetrie | aucune mesure depuis 1 min |
 | ESP32Muet | un ESP32 silencieux depuis plus de 60 s |
+| OtaRollback | une campagne OTA a été refusée par le canary (version bloquée) |
 | BatterieFaible | batterie < 3,3 V |
 | PontMQTTCoupe | un pont MQTT déconnecté depuis 1 min |
 | FogVoisinSilencieux | pas de signe de vie d'un fog depuis 1 min |

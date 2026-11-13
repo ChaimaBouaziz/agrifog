@@ -30,6 +30,11 @@ def ota_status(fog: str, device: str) -> str:
     return f"{fog}/device/{device}/ota/status"
 
 
+def ota_campaign(fog: str) -> str:
+    """État de la campagne OTA en cours (ota-manager, retained) : version, canary, state, detail."""
+    return f"{fog}/ota/campaign"
+
+
 def alert(fog: str) -> str:
     return f"{fog}/alert"
 

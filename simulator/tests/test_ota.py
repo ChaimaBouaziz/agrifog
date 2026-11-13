@@ -47,3 +47,31 @@ def test_unreachable_url_fails_cleanly():
         raise OSError("connexion refusée")
     out = device().on_ota(GOOD, download=boom)
     assert out[-1]["state"] == "failed" and "téléchargement" in out[-1]["detail"]
+
+
+CRASH = BLOB + b"AGRIFOG-DEFECT:crash"
+SENSOR = BLOB + b"AGRIFOG-DEFECT:sensor"
+
+
+def order(blob, version="0.3.1", oid="ota-bad"):
+    return {"id": oid, "version": version, "url": "http://fog/x.bin",
+            "sha256": hashlib.sha256(blob).hexdigest(), "size": len(blob)}
+
+
+def test_crashing_firmware_is_rolled_back_by_the_device_after_3_boots():
+    d = device()
+    d.on_ota(GOOD, download=lambda url: BLOB)                       # 0.3.0 installée (bonne)
+    d.on_ota(order(CRASH), download=lambda url: CRASH)               # 0.3.1 défectueuse
+    assert d.fw_version == "0.3.1"
+    assert [d.boot() for _ in range(3)] == [False, False, True]      # 2 plantages, retour au 3e
+    assert d.fw_version == "0.3.0" and d.defect is None
+    rb = d.outbox[-1]
+    assert rb["state"] == "rolled_back" and rb["running"] == "0.3.0" and rb["version"] == "0.3.1"
+
+
+def test_sensor_defect_keeps_running_but_is_flagged():
+    d = device()
+    d.on_ota(order(SENSOR), download=lambda url: SENSOR)
+    assert d.boot() and d.defect == "sensor" and d.heartbeat()["fw_version"] == "0.3.1"
+    d.on_ota({**GOOD, "id": "rollback"}, download=lambda url: BLOB)  # rollback envoyé par ota-manager
+    assert d.defect is None and d.fw_version == "0.3.0"

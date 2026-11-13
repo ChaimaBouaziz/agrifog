@@ -32,6 +32,7 @@ class Release:
     size: int
     url: str            # source publique (GitHub Release) : utilisée par l'ESP32 de Wokwi
     source: str = ""
+    blocked: str = ""   # raison du blocage (campagne canary ratée) : plus jamais déployée
 
 
 class ChecksumError(ValueError):
@@ -83,6 +84,25 @@ class Catalog:
         sha = self.download(assets["firmware.bin.sha256"]).decode().split()[0]
         version = tag.removeprefix("fw-v").removeprefix("v")
         return self.add(version, assets["firmware.bin"], sha, source=f"github:{repo}@{tag}")
+
+    def make_defect(self, base: str, version: str, kind: str) -> Release:
+        """DÉMO : copie d'une version, marquée défectueuse ("crash" ou "sensor").
+
+        Le binaire est différent (donc un autre SHA-256, vérifié normalement) ; les ESP32 virtuels
+        reconnaissent le marqueur et se comportent comme avec un vrai firmware buggé.
+        """
+        if kind not in ("crash", "sensor"):
+            raise ValueError("kind = crash ou sensor")
+        blob = self.path(self.get(base).version).read_bytes() + f"AGRIFOG-DEFECT:{kind}".encode()
+        self.path(version).write_bytes(blob)
+        rel = Release(version, hashlib.sha256(blob).hexdigest(), len(blob), "", f"démo : {base} + défaut {kind}")
+        self._releases[version] = rel
+        self._save()
+        return rel
+
+    def block(self, version: str, reason: str) -> None:
+        self.get(version).blocked = reason
+        self._save()
 
     def _save(self) -> None:
         self.index.write_text(json.dumps([asdict(r) for r in self.releases()], indent=2), encoding="utf-8")

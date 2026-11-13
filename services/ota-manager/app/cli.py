@@ -3,6 +3,10 @@
     python -m app.cli release fw-v0.3.0              # ajoute la release GitHub au catalogue du fog
     python -m app.cli deploy 0.3.0 esp-b-01          # un ESP32 (ou plusieurs, ou "all")
     python -m app.cli devices                        # versions installées + dernier statut OTA
+
+    python -m app.cli campaign 0.3.1                 # canary sur 1 ESP32, puis toute la flotte (ou rollback)
+    python -m app.cli campaign-status                # où en est la campagne
+    python -m app.cli defect 0.3.0 0.3.1 crash       # DÉMO : fabriquer une version défectueuse (crash|sensor)
 """
 
 from __future__ import annotations
@@ -39,6 +43,15 @@ def main() -> None:
     d.add_argument("version")
     d.add_argument("devices", nargs="+")
     sub.add_parser("devices", help="état des ESP32")
+    c = sub.add_parser("campaign", help="campagne canary + rollback")
+    c.add_argument("version")
+    c.add_argument("--canary", default=None)
+    c.add_argument("--observe", type=float, default=60, help="secondes d'observation du canary")
+    sub.add_parser("campaign-status", help="état de la campagne")
+    f = sub.add_parser("defect", help="DÉMO : version défectueuse")
+    f.add_argument("base")
+    f.add_argument("version")
+    f.add_argument("kind", choices=["crash", "sensor"])
     sub.add_parser("releases", help="catalogue du fog")
     a = ap.parse_args()
 
@@ -49,9 +62,25 @@ def main() -> None:
         res = call("POST", "/deploy", {"version": a.version, "devices": "all" if a.devices == ["all"] else a.devices})
         for o in res["orders"]:
             print(f"ordre {o['id']} -> {o['url']}")
+    elif a.cmd == "campaign":
+        st = call("POST", "/campaigns", {"version": a.version, "canary": a.canary, "observe_s": a.observe})
+        print(f"campagne {st['version']} : canary {st['canary']} (observation {st['observe_s']:.0f} s)")
+        print("suivre : python -m app.cli campaign-status")
+    elif a.cmd == "campaign-status":
+        st = call("GET", "/campaigns")
+        if not st:
+            print("aucune campagne")
+            return
+        print(f"campagne {st['version']} — état : {st['state'].upper()}   canary : {st['canary']}")
+        for e in st["events"]:
+            print(f"  +{e['t']:>5.0f} s  {e['text']}")
+    elif a.cmd == "defect":
+        rel = call("POST", "/releases/defect", {"base": a.base, "version": a.version, "kind": a.kind})
+        print(f"version de démo {rel['version']} créée ({rel['source']}), SHA-256 {rel['sha256'][:16]}…")
     elif a.cmd == "releases":
         for rel in call("GET", "/releases"):
-            print(f"{rel['version']:>8}  {rel['size']:>8} o  {rel['sha256'][:16]}…  {rel['source']}")
+            blocked = f"  BLOQUÉE : {rel['blocked']}" if rel.get("blocked") else ""
+            print(f"{rel['version']:>8}  {rel['size']:>8} o  {rel['sha256'][:16]}…  {rel['source']}{blocked}")
     else:
         snap = call("GET", "/devices")
         print(f"{snap['fog']} : versions {snap['versions']}")
