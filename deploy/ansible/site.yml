@@ -5,6 +5,10 @@
 #
 # Étapes : outils -> registry local -> cluster K3s (k3d) -> images -> déploiement Helm.
 # Rejouable : une étape déjà faite est sautée (idempotence).
+#
+# GitOps (semaine 5) :  ... site.yml -l fog-b -e gitops=true
+#   au lieu de lancer Helm, Ansible installe Flux ; Flux déploie depuis GitHub (branche main)
+#   et réapplique tout seul chaque changement mergé.
 - name: Installer un nœud fog AgriFog
   hosts: fogs
   gather_facts: true
@@ -13,4 +17,7 @@
     - registry
     - cluster
     - images
-    - deploy
+    - role: deploy
+      when: not (gitops | bool)
+    - role: flux
+      when: gitops | bool

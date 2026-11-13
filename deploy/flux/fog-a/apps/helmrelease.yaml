@@ -1,0 +1,27 @@
+# Les services du fog fog-a, décrits par le chart Helm du dépôt. Flux le réapplique à chaque commit
+# sur main (reconcileStrategy: Revision) : modifier values-fog-a.yaml dans Git = modifier le fog.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: agrifog
+  namespace: default
+spec:
+  interval: 1m
+  chart:
+    spec:
+      chart: ./deploy/helm/agrifog
+      reconcileStrategy: Revision
+      sourceRef:
+        kind: GitRepository
+        name: agrifog
+        namespace: flux-system
+      valuesFiles:
+        - ./deploy/helm/agrifog/values.yaml
+        - ./deploy/helm/agrifog/values-fog-a.yaml
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+      remediateLastFailure: true     # une mise à jour ratée est annulée (helm rollback)

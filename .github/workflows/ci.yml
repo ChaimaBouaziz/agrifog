@@ -80,6 +80,10 @@ jobs:
         run: |
           curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz | tar xz
           ./kubeconform -strict -summary /tmp/fog-a.yaml /tmp/fog-b.yaml
+          # manifests Flux (GitOps), validés avec les schémas des CRD Flux
+          ./kubeconform -strict -summary -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            deploy/flux/fog-a deploy/flux/fog-b
       - name: Playbook Ansible (syntaxe)
         run: |
           pip install ansible-core

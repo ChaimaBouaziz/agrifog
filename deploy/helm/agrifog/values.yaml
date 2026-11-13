@@ -5,6 +5,10 @@ fogId: fog-a
 # et le cluster les tire sous ce nom-là.
 registry: k3d-agrifog-registry:5001
 tag: dev
+
+# Nombre d'ESP32 virtuels du simulateur (vide = tous ceux de config/<fog>.yaml).
+# Exemple de réglage piloté par GitOps : on le change dans Git, Flux l'applique.
+simulatorDevices:
 imagePullPolicy: Always
 
 mosquitto:
