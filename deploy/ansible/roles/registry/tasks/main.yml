@@ -1,0 +1,8 @@
+- name: Registries existants
+  ansible.builtin.command: "{{ bin_dir }}/k3d registry list -o json"
+  register: registries
+  changed_when: false
+
+- name: Créer le registry local (localhost:{{ registry_port }})
+  ansible.builtin.command: "{{ bin_dir }}/k3d registry create {{ registry_name }} --port {{ registry_port }}"
+  when: ("k3d-" ~ registry_name) not in (registries.stdout | from_json | map(attribute='name') | list)

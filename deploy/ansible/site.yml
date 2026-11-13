@@ -1,9 +1,16 @@
-# Responsable : Ines · Semaine 3
-# ansible-playbook -i inventory.ini site.yml
-- name: Install an AgriFog fog node
+# Responsable : Ines · Semaine 3 — installer un nœud fog complet, d'une seule commande.
+#
+#   cd deploy/ansible
+#   ansible-playbook -i inventory.ini site.yml -l fog-b        # (fog-a chez Chaima)
+#
+# Étapes : outils -> registry local -> cluster K3s (k3d) -> images -> déploiement Helm.
+# Rejouable : une étape déjà faite est sautée (idempotence).
+- name: Installer un nœud fog AgriFog
   hosts: fogs
-  become: true
-  tasks:
-    - name: Placeholder
-      ansible.builtin.debug:
-        msg: "TODO: Tailscale, K3s, registry local, Mosquitto, InfluxDB, monitoring, Flux pour {{ inventory_hostname }}"
+  gather_facts: true
+  roles:
+    - tools
+    - registry
+    - cluster
+    - images
+    - deploy

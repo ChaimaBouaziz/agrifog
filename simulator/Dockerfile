@@ -3,8 +3,10 @@ FROM python:3.12-slim
 WORKDIR /srv
 COPY libs/agrifog_common /tmp/agrifog_common
 COPY simulator/requirements.txt .
-RUN pip install --no-cache-dir /tmp/agrifog_common -r requirements.txt
+RUN pip install --no-cache-dir --default-timeout=120 --retries 10 /tmp/agrifog_common -r requirements.txt
 COPY config /srv/config
 COPY simulator/simulator /srv/simulator
-ENV AGRIFOG_CONFIG_DIR=/srv/config PYTHONUNBUFFERED=1
+# la météo réelle de Sfax (versionnée dans data/) : le simulateur en a besoin dans le conteneur
+COPY data /srv/data
+ENV AGRIFOG_CONFIG_DIR=/srv/config AGRIFOG_DATA_DIR=/srv/data PYTHONUNBUFFERED=1
 CMD ["python", "-m", "simulator.main"]

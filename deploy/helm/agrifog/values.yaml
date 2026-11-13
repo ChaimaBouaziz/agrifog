@@ -1,10 +1,35 @@
+# Valeurs communes aux deux fogs. Ce qui change d'un fog à l'autre est dans values-fog-a.yaml / values-fog-b.yaml.
 fogId: fog-a
-registry: localhost:5000
 
-services:
-  irrigation-engine: { enabled: true, tag: "0.1.0" }
-  quota-negotiator: { enabled: true, tag: "0.1.0" }
-  fed-learning: { enabled: false, tag: "0.1.0" }
-  pump-scheduler: { enabled: true, tag: "0.1.0" }
-  fog-twin: { enabled: true, tag: "0.1.0" }
-  ota-manager: { enabled: true, tag: "0.1.0" }
+# Registry local créé par Ansible (k3d) : les images sont poussées sur localhost:5001 depuis le PC,
+# et le cluster les tire sous ce nom-là.
+registry: k3d-agrifog-registry:5001
+tag: dev
+imagePullPolicy: Always
+
+mosquitto:
+  image: eclipse-mosquitto:2.0.20
+  nodePort: 31883          # k3d publie ce port sur le PC (21883) : voir deploy/ansible
+
+# Un Deployment (+ un Service s'il a un port) par application.
+apps:
+  - name: irrigation-engine
+    enabled: true
+    port: 8000
+    healthPath: /health
+    nodePort: 31800        # API : http://localhost:28000/zones depuis le PC
+  - name: quota-negotiator
+    enabled: true
+    port: 8000
+    healthPath: /health
+  - name: fog-exporter
+    enabled: true
+    port: 9108
+    healthPath: /metrics
+  - name: simulator        # les ESP32 virtuels du fog (horloge alignée sur l'autre fog)
+    enabled: true
+    args: ["python", "-m", "simulator.main", "--sync"]
+
+resources:
+  requests: { cpu: 20m, memory: 64Mi }
+  limits: { memory: 256Mi }

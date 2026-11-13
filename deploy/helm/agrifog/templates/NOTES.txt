@@ -1,0 +1,6 @@
+Fog {{ .Values.fogId }} déployé dans le cluster.
+
+  kubectl get pods                         # tous "Running"
+  kubectl logs deploy/irrigation-engine    # les décisions
+  curl http://localhost:28000/zones        # API du moteur (depuis le PC)
+  MQTT du cluster : localhost:21883

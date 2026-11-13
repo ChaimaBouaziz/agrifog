@@ -1,0 +1,22 @@
+# Versions figées (même règle que pour les images Docker : pas de mise à jour surprise)
+k3d_version: v5.7.4
+kubectl_version: v1.31.4
+helm_version: v3.16.4
+
+bin_dir: "{{ ansible_env.HOME }}/.local/bin"
+repo_root: "{{ playbook_dir | dirname | dirname }}"
+
+registry_name: agrifog-registry          # conteneur : k3d-agrifog-registry
+registry_port: 5001
+cluster_name: "agrifog-{{ fog_id }}"
+
+# Ports publiés sur le PC (différents de Docker Compose pour que les deux puissent tourner ensemble)
+mqtt_host_port: 21883     # -> NodePort 31883 (Mosquitto du cluster)
+api_host_port: 28000      # -> NodePort 31800 (API d'irrigation-engine)
+
+image_tag: dev
+images:                   # nom de l'image -> Dockerfile (contexte de build = racine du dépôt)
+  - { name: irrigation-engine, dockerfile: services/irrigation-engine/Dockerfile }
+  - { name: quota-negotiator,  dockerfile: services/quota-negotiator/Dockerfile }
+  - { name: fog-exporter,      dockerfile: services/fog-exporter/Dockerfile }
+  - { name: simulator,         dockerfile: simulator/Dockerfile }

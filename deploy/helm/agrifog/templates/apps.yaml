@@ -1,0 +1,83 @@
+{{- range $app := .Values.apps }}
+{{- if $app.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $app.name }}
+  labels:
+    app: {{ $app.name }}
+    {{- include "agrifog.labels" $ | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ $app.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ $app.name }}
+        {{- include "agrifog.labels" $ | nindent 8 }}
+    spec:
+      containers:
+        - name: {{ $app.name }}
+          image: "{{ $.Values.registry }}/agrifog/{{ $app.name }}:{{ $.Values.tag }}"
+          imagePullPolicy: {{ $.Values.imagePullPolicy }}
+          {{- if $app.args }}
+          args:
+            {{- range $app.args }}
+            - {{ . | quote }}
+            {{- end }}
+          {{- end }}
+          env:
+            - name: FOG_ID
+              value: {{ $.Values.fogId | quote }}
+            - name: MQTT_HOST          # le broker du cluster (Service "mosquitto")
+              value: "mosquitto"
+            - name: MQTT_FALLBACK      # pas de bascule vers le PC voisin depuis le cluster
+              value: {{ $.Values.mqttFallback | default "" | quote }}
+            - name: PYTHONUNBUFFERED
+              value: "1"
+          {{- if $app.port }}
+          ports:
+            - containerPort: {{ $app.port }}
+          readinessProbe:
+            httpGet:
+              path: {{ $app.healthPath }}
+              port: {{ $app.port }}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: {{ $app.healthPath }}
+              port: {{ $app.port }}
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          {{- end }}
+          resources:
+            requests:
+              cpu: {{ $.Values.resources.requests.cpu }}
+              memory: {{ $.Values.resources.requests.memory }}
+            limits:
+              memory: {{ $.Values.resources.limits.memory }}
+{{- if $app.port }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $app.name }}
+  labels:
+    {{- include "agrifog.labels" $ | nindent 4 }}
+spec:
+  type: {{ if $app.nodePort }}NodePort{{ else }}ClusterIP{{ end }}
+  selector:
+    app: {{ $app.name }}
+  ports:
+    - name: http
+      port: {{ $app.port }}
+      targetPort: {{ $app.port }}
+      {{- if $app.nodePort }}
+      nodePort: {{ $app.nodePort }}
+      {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
