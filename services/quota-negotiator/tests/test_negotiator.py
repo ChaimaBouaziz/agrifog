@@ -78,3 +78,24 @@ def test_usage_is_tracked_per_day():
     bus, a, _ = make_pair()
     a.on_usage({"day": "2025-07-01", "used_l": 1200})
     assert a.snapshot()["2025-07-01"]["used_l"] == 1200
+
+
+def test_request_is_retained_for_a_late_neighbour():
+    bus, a, _ = make_pair()
+    feed(a, "03:00", 21.0)
+    assert ("domaine/quota/request/fog-a" in [t for t, _ in bus.log])
+    # le Bus de test ne simule pas le "retained" : on vérifie le drapeau envoyé au broker
+    sent = []
+    a.publish = lambda topic, payload, retain=False: sent.append((topic, retain))
+    feed(a, "03:00", 21.0, day=2)
+    assert ("domaine/quota/request/fog-a", True) in sent
+
+
+def test_no_cession_back_to_a_neighbour_who_just_gave():
+    bus, a, b = make_pair()
+    a.on_decision({"et0": 6.5}); b.on_decision({"et0": 6.5})
+    feed(a, "03:00", 24.5); feed(b, "03:00", 17.5)
+    feed(b, "10:00", 18.0)                               # l'olivier n'a besoin de rien : il cède d'abord
+    assert [p for t, p in bus.log if t == "domaine/quota/release/fog-b"]
+    feed(a, "10:00", 29.0)                               # la tomate a maintenant trop… mais ne rend rien
+    assert not [p for t, p in bus.log if t == "domaine/quota/release/fog-a"]
