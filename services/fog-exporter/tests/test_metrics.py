@@ -109,3 +109,13 @@ def test_zone_counters_start_at_zero():
     m, _ = make()
     assert val(m, "agrifog_water_commands_total", fog="fog-b", zone="z1") == 0
     assert val(m, "agrifog_valve_acks_total", fog="fog-b", zone="zw") == 0
+
+
+def test_ota_status_and_version_change():
+    m, _ = make()
+    m.handle("fog-b/device/esp-b-01/heartbeat", {"fw_version": "0.1.0"})
+    m.handle("fog-b/device/esp-b-01/ota/status", {"version": "0.3.0", "state": "installed"})
+    m.handle("fog-b/device/esp-b-01/heartbeat", {"fw_version": "0.3.0"})
+    assert val(m, "agrifog_ota_status_total", fog="fog-b", version="0.3.0", state="installed") == 1
+    assert val(m, "agrifog_device_firmware_info", fog="fog-b", device="esp-b-01", version="0.3.0") == 1
+    assert val(m, "agrifog_device_firmware_info", fog="fog-b", device="esp-b-01", version="0.1.0") is None

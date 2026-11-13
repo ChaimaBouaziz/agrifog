@@ -8,10 +8,12 @@ Commands sent while a device sleeps are not lost: persistent MQTT session
 (clean_session=False) + QoS 1, so the broker keeps them until the next wake-up.
 """
 
+import hashlib
 import json
 import random
 import threading
 import time
+import urllib.request
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
@@ -151,6 +153,10 @@ class VirtualESP32:
     battery_v: float = 4.10
     boot_s: float = field(default_factory=time.time)
     cycles: int = 0
+    # mise à jour OTA
+    fw_version: str = FW_VERSION
+    ota_done: set = field(default_factory=set)        # ids déjà traités (QoS 1 : doublons possibles)
+    outbox: list = field(default_factory=list)        # statuts OTA à publier au prochain réveil
 
     # ---- payloads (pure functions, easy to test) ----
     def telemetry(self) -> dict:
@@ -170,7 +176,7 @@ class VirtualESP32:
     def heartbeat(self) -> dict:
         return {
             "ts": self.zone.clock.iso(),
-            "fw_version": FW_VERSION,
+            "fw_version": self.fw_version,
             "battery_v": round(self.battery_v, 3),
             "rssi": random.randint(-85, -55),
             "uptime_s": int(time.time() - self.boot_s),
@@ -191,6 +197,33 @@ class VirtualESP32:
                 "opened": iso(opened), "until": iso(until),
                 "water_l_total": round(self.zone.water_l_total, 1)}
 
+    # ---- mise à jour OTA (comme le vrai firmware : télécharger, vérifier le SHA-256, installer) ----
+    def _ota_status(self, order: dict, state: str, detail: str = "", previous: str | None = None) -> dict:
+        st = {"id": order.get("id"), "device": self.device, "version": order.get("version"),
+              "from": previous or self.fw_version, "state": state, "detail": detail,
+              "ts": self.zone.clock.iso()}
+        print(f"[{self.device}] OTA {order.get('version')} : {state} {detail}".rstrip())
+        return st
+
+    def on_ota(self, order: dict, download=None) -> list[dict]:
+        """Run an OTA order; returns the status messages (published at the next wake-up)."""
+        if order.get("id") in self.ota_done:
+            return []
+        self.ota_done.add(order.get("id"))
+        if order.get("version") == self.fw_version:
+            return [self._ota_status(order, "skipped", f"déjà en {self.fw_version}")]
+        out = [self._ota_status(order, "downloading")]
+        try:
+            blob = (download or _download)(order["url"])
+        except (OSError, ValueError, KeyError) as e:
+            return out + [self._ota_status(order, "failed", f"téléchargement impossible ({e})")]
+        if order.get("size") and len(blob) != int(order["size"]):
+            return out + [self._ota_status(order, "failed", f"taille {len(blob)} au lieu de {order['size']}")]
+        if hashlib.sha256(blob).hexdigest() != str(order.get("sha256", "")).lower():
+            return out + [self._ota_status(order, "failed", "empreinte SHA-256 incorrecte : firmware refusé")]
+        previous, self.fw_version, self.boot_s = self.fw_version, order["version"], time.time()   # flash + reboot
+        return out + [self._ota_status(order, "installed", f"{previous} -> {self.fw_version}", previous)]
+
     def drain_battery(self) -> None:
         # éveillé : ~80 mA, deep sleep : ~10 µA -> presque tout se joue pendant l'éveil
         self.battery_v = max(3.0, self.battery_v - 0.0004)
@@ -201,12 +234,21 @@ class VirtualESP32:
             mqtt.CallbackAPIVersion.VERSION2, client_id=self.device, clean_session=False
         )
         cmd_topic = topics.cmd(self.fog, self.zone.id)
+        ota_topic = topics.ota(self.fog, self.device)
 
         def on_connect(c, u, f, rc, p):
+            c.subscribe(ota_topic, qos=1)
             if self.has_valve:
                 c.subscribe(cmd_topic, qos=1)
 
         def on_message(c, u, msg):
+            if msg.topic == ota_topic:      # téléchargement en tâche de fond : le cycle continue
+                try:
+                    order = json.loads(msg.payload)
+                except json.JSONDecodeError:
+                    return
+                threading.Thread(target=lambda: self.outbox.extend(self.on_ota(order)), daemon=True).start()
+                return
             try:
                 ack = self.on_command(json.loads(msg.payload))
             except json.JSONDecodeError:
@@ -235,6 +277,8 @@ class VirtualESP32:
         client.publish(topics.telemetry(self.fog, self.zone.id), json.dumps(self.telemetry()), qos=1)
         client.publish(topics.heartbeat(self.fog, self.device), json.dumps(self.heartbeat()), qos=1)
         time.sleep(AWAKE_S)
+        while self.outbox:                   # statuts OTA en attente
+            client.publish(topics.ota_status(self.fog, self.device), json.dumps(self.outbox.pop(0)), qos=1)
         client.disconnect()
         client.loop_stop()
         self.cycles += 1
@@ -246,6 +290,11 @@ class VirtualESP32:
             if not self.offline:          # panne : l'ESP32 ne se réveille plus
                 self.wake_once()
             stop.wait(self.period_s)  # deep sleep
+
+
+def _download(url: str) -> bytes:
+    with urllib.request.urlopen(url, timeout=60) as resp:
+        return resp.read()
 
 
 def build_fleet(

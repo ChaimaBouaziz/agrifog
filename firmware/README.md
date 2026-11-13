@@ -1,4 +1,4 @@
-# Firmware ESP32 (v2)
+# Firmware ESP32 (v3 — 0.3.0)
 
 Responsable : Ines
 
@@ -26,3 +26,20 @@ compte le volume commandé, ce qui permet au moteur de vérifier l'arrosage.
 3. VS Code ouvert sur `firmware/` : Build ✓ puis F1 → *Wokwi: Start Simulator*
 4. Tourner le potentiomètre **à gauche** (sol sec) : au réveil suivant le moteur décide « URGENCE »,
    au réveil d'après l'ESP32 reçoit l'ordre et **le relais s'allume**.
+
+
+## v3 (semaine 4) : liste de brokers et ordre OTA
+
+* **Liste de brokers** (`MQTT_BROKERS` dans `platformio.ini`, `hôte|IP de secours,…`) : si le premier
+  ne répond pas, l'ESP32 **bascule** sur le suivant (`[mqtt] bascule vers …`), puis revient au
+  principal tous les 20 réveils. Le Mosquitto de fog-b relaie les deux brokers publics
+  (`relay-wokwi.conf` et `relay-wokwi-backup.conf`).
+* **Ordre OTA** (`…/device/esp-b-wokwi/ota`) : le firmware contrôle l'ordre (version, SHA-256),
+  répond sur `…/ota/status` (`accepted`, `skipped` si déjà dans cette version, `failed` si l'ordre est
+  invalide) et l'affiche. Dans Wokwi la carte n'est pas reflashée ; le téléchargement + la
+  vérification SHA-256 + l'installation réels sont faits par la flotte simulée (voir `docs/ota.md`).
+
+## Déboguer un plantage (Backtrace)
+```powershell
+& "$env:USERPROFILE\.platformio\packages\toolchain-xtensa-esp-elf\bin\xtensa-esp32-elf-addr2line.exe" -pfiaC -e .pio\build\esp32dev\firmware.elf <adresses 0x400... du Backtrace>
+```

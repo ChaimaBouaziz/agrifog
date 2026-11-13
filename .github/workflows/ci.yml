@@ -60,7 +60,7 @@ jobs:
           path: |
             firmware/.pio/build/esp32dev/firmware.bin
             firmware/.pio/build/esp32dev/firmware.bin.sha256
-      # TODO (Ines, semaine 4) : test Wokwi CLI
+      # Publication : tag fw-vX.Y.Z -> workflow firmware-release.yml (Release GitHub pour l OTA)
 
   # Déploiement : chart Helm et playbook Ansible vérifiés à chaque push -------------------
   deploy-check:

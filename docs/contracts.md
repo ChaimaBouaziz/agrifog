@@ -21,7 +21,8 @@
 | `{fog}/zone/{zone}/cmd` | locale | irrigation-engine | `{"id":"<unique>","action":"water","seconds":600}` — exécutée par l'ESP32 qui porte la vanne (1er de la zone) ; `id` évite les doublons QoS 1 |
 | `{fog}/zone/{zone}/decision` | locale | irrigation-engine | `action` (water/wait), `kind`, `reason` (explication lisible), `moisture`, `et0` — publié quand la situation change |
 | `{fog}/device/{device}/heartbeat` | locale | ESP32 | `fw_version`, `battery_v`, `rssi`, `uptime_s`, `broker` (broker utilisé) |
-| `{fog}/device/{device}/ota` | locale | ota-manager | `{"version":"1.1.0","url":"…","sha256":"…"}` |
+| `{fog}/device/{device}/ota` | locale | ota-manager | `id`, `version`, `url`, `sha256`, `size` (ordre de mise à jour) |
+| `{fog}/device/{device}/ota/status` | locale | ESP32 | `id`, `device`, `version`, `from`, `state` (`downloading`, `installed`, `skipped`, `failed`, `accepted`), `detail` |
 | `{fog}/zone/{zone}/valve` | locale | ESP32 vanne | accusé d'exécution : `id`, `device`, `state`, `opened`, `until`, `water_l_total` |
 | `{fog}/weather/forecast` | locale, retained | simulateur (puis passerelle météo) | `ts`, `rain_next_24h_mm`, `source` |
 | `{fog}/sim/fault` | locale | humain / bot Telegram | injection de pannes (voir `simulator/simulator/faults.py`) |
