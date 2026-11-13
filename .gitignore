@@ -12,5 +12,7 @@ firmware/.vscode/
 # données et résultats lourds
 data/*
 !data/.gitkeep
+# la météo de Sfax est petite et nécessaire (image du simulateur, expériences) : on la versionne
+!data/meteo_sfax_*.csv
 experiments/**/*.csv
 mlruns/

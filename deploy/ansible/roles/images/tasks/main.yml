@@ -1,0 +1,19 @@
+# Construire les images du fog et les pousser dans le registry local.
+# (le même Dockerfile que la CI : une image testée en CI = une image déployée)
+- name: "Construire les images (1re fois, téléchargement des dépendances Python)"
+  ansible.builtin.command:
+    cmd: "docker build -f {{ item.dockerfile }} -t localhost:{{ registry_port }}/agrifog/{{ item.name }}:{{ image_tag }} ."
+    chdir: "{{ repo_root }}"
+  loop: "{{ images }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: build
+  changed_when: true
+
+- name: Pousser les images dans le registry local
+  ansible.builtin.command: "docker push localhost:{{ registry_port }}/agrifog/{{ item.name }}:{{ image_tag }}"
+  loop: "{{ images }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: push
+  changed_when: "'Pushed' in push.stdout"

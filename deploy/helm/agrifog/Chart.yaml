@@ -1,6 +1,6 @@
 apiVersion: v2
 name: agrifog
-description: AgriFog fog services
+description: Services d'un nœud fog AgriFog (broker MQTT, moteur d'irrigation, négociateur de quota, exporter, simulateur)
 type: application
-version: 0.1.0
-appVersion: "0.1.0"
+version: 0.3.0
+appVersion: "0.3.0"

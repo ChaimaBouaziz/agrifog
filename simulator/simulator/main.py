@@ -42,11 +42,11 @@ def start_control(cfg: dict, fog: str, zones: dict, devices: dict, clock: SimClo
             print(f"[panne] commande refusée : {e}")
 
     client.on_connect, client.on_message = on_connect, on_message
-    try:
-        client.connect(cfg["mqtt"]["host"], cfg["mqtt"]["port"])
-        client.loop_start()
-    except OSError as e:
-        print(f"[simulateur] broker injoignable, pas d'injection de pannes ni de prévision : {e}")
+    # connexion en arrière-plan avec reprises : si le broker démarre après le simulateur
+    # (cas d'un cluster où tout démarre en même temps), pannes et prévisions arrivent dès qu'il répond
+    client.reconnect_delay_set(min_delay=1, max_delay=10)
+    client.connect_async(cfg["mqtt"]["host"], cfg["mqtt"]["port"])
+    client.loop_start()
     return client
 
 

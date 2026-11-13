@@ -12,6 +12,7 @@ import argparse
 import csv
 import json
 import math
+import os
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -73,8 +74,13 @@ def load_weather(path: Path) -> list[dict]:
     return rows
 
 
+def data_dir() -> Path:
+    """data/ du dépôt ; dans une image Docker : AGRIFOG_DATA_DIR (la météo y est copiée)."""
+    return Path(os.environ.get("AGRIFOG_DATA_DIR", REPO_ROOT / "data"))
+
+
 def default_weather_path() -> Path:
-    files = sorted((REPO_ROOT / "data").glob("meteo_sfax_*.csv"))
+    files = sorted(data_dir().glob("meteo_sfax_*.csv"))
     if not files:
         raise FileNotFoundError("Aucune météo dans data/ : lancer d'abord  python -m simulator.weather")
     return files[-1]
@@ -105,7 +111,7 @@ def main() -> None:
     with urllib.request.urlopen(url, timeout=30) as resp:
         rows = parse(json.load(resp))
 
-    out = REPO_ROOT / "data" / f"meteo_sfax_{args.start}_{args.end}.csv"
+    out = data_dir() / f"meteo_sfax_{args.start}_{args.end}.csv"
     save_csv(rows, out)
     rain_days = sum(1 for r in rows if (r["rain_mm"] or 0) > 0.2)
     print(f"{len(rows)} jours enregistrés dans {out} ({rain_days} jours de pluie)")

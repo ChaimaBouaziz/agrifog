@@ -5,7 +5,8 @@
 **/__pycache__
 **/.pytest_cache
 **/*.egg-info
-data
+data/*
+!data/meteo_sfax_*.csv
 experiments
 firmware/.pio
 firmware/.vscode

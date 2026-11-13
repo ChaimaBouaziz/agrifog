@@ -1,0 +1,10 @@
+# Supprimer le cluster K3s d'un fog (le registry et ses images sont gardés).
+#   ansible-playbook -i inventory.ini teardown.yml -l fog-b
+- name: Supprimer le cluster AgriFog d'un fog
+  hosts: fogs
+  gather_facts: true
+  tasks:
+    - name: Supprimer le cluster k3d
+      ansible.builtin.command: "{{ bin_dir }}/k3d cluster delete {{ cluster_name }}"
+      register: deleted
+      changed_when: "'Successfully deleted' in deleted.stderr or 'Deleting' in deleted.stderr"

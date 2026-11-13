@@ -1,0 +1,22 @@
+- name: Clusters existants
+  ansible.builtin.command: "{{ bin_dir }}/k3d cluster list -o json"
+  register: clusters
+  changed_when: false
+
+- name: "Créer le cluster K3s du fog (1re fois, téléchargement de l'image K3s, plusieurs minutes)"
+  ansible.builtin.command: >-
+    {{ bin_dir }}/k3d cluster create {{ cluster_name }}
+    --registry-use k3d-{{ registry_name }}:{{ registry_port }}
+    -p "{{ mqtt_host_port }}:31883@server:0"
+    -p "{{ api_host_port }}:31800@server:0"
+    --k3s-arg "--disable=traefik@server:0"
+    --wait --timeout 600s
+  when: cluster_name not in (clusters.stdout | from_json | map(attribute='name') | list)
+
+- name: Utiliser ce cluster par défaut (kubectl, helm)
+  ansible.builtin.command: "{{ bin_dir }}/kubectl config use-context k3d-{{ cluster_name }}"
+  changed_when: false
+
+- name: Le nœud K3s est prêt
+  ansible.builtin.command: "{{ bin_dir }}/kubectl wait --for=condition=Ready nodes --all --timeout=180s"
+  changed_when: false

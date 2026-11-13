@@ -62,6 +62,31 @@ jobs:
             firmware/.pio/build/esp32dev/firmware.bin.sha256
       # TODO (Ines, semaine 4) : test Wokwi CLI
 
+  # Déploiement : chart Helm et playbook Ansible vérifiés à chaque push -------------------
+  deploy-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.4
+      - name: Helm lint + rendu pour chaque fog
+        run: |
+          for f in fog-a fog-b; do
+            helm lint deploy/helm/agrifog -f deploy/helm/agrifog/values-$f.yaml
+            helm template agrifog deploy/helm/agrifog -f deploy/helm/agrifog/values-$f.yaml > /tmp/$f.yaml
+          done
+      - name: Manifests conformes au schéma Kubernetes (kubeconform)
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz | tar xz
+          ./kubeconform -strict -summary /tmp/fog-a.yaml /tmp/fog-b.yaml
+      - name: Playbook Ansible (syntaxe)
+        run: |
+          pip install ansible-core
+          cd deploy/ansible
+          ansible-playbook -i inventory.ini site.yml --syntax-check
+          ansible-playbook -i inventory.ini teardown.yml --syntax-check
+
   # 3. Images Docker + scan de sécurité Trivy -----------------------------------------
   docker-images:
     needs: python-tests                 # on ne construit que du code testé
