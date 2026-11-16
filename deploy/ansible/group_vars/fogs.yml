@@ -2,6 +2,10 @@
 k3d_version: v5.7.4
 kubectl_version: v1.31.4
 helm_version: v3.16.4
+flux_version: 2.4.0
+
+# GitOps : false = Ansible déploie avec Helm ; true = Ansible installe Flux, qui déploie depuis GitHub
+gitops: false
 
 bin_dir: "{{ ansible_env.HOME }}/.local/bin"
 repo_root: "{{ playbook_dir | dirname | dirname }}"

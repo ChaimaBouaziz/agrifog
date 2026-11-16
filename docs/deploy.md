@@ -31,3 +31,24 @@ ansible-playbook -i inventory.ini site.yml -l fog-b
   conformité au schéma Kubernetes (kubeconform), syntaxe des playbooks.
 
 Supprimer le cluster : `ansible-playbook -i inventory.ini teardown.yml -l fog-b`.
+
+## GitOps avec Flux (semaine 5)
+
+```
+ansible-playbook -i inventory.ini site.yml -l fog-b -e gitops=true
+   └─ flux     installe Flux dans le cluster et le branche sur GitHub (dépôt public : pas de jeton)
+
+GitHub (branche main) ──► source-controller : relit le dépôt chaque minute
+                           └► kustomize-controller : applique deploy/flux/fog-b/apps
+                                └► helm-controller : HelmRelease agrifog = chart deploy/helm/agrifog
+                                                     + values.yaml + values-fog-b.yaml
+```
+
+* **Git est la référence** : on ne lance plus `helm` à la main. Modifier le fog = modifier
+  `deploy/helm/agrifog/values-fog-b.yaml` (ou le chart) dans une PR ; une fois mergée sur `main`,
+  Flux l'applique en ~1 min, sur le fog concerné uniquement.
+* Exemple : `simulatorDevices: 3` dans `values-fog-b.yaml` -> après le merge, le simulateur du cluster
+  redémarre avec 3 ESP32 (`kubectl logs deploy/simulator`).
+* Une mise à jour qui échoue est **annulée par Flux** (`remediateLastFailure` : helm rollback).
+* Suivre : `flux get all -A` ; forcer : `flux reconcile kustomization agrifog-apps --with-source`.
+* Les images restent celles du registry local (construites par Ansible, tag `dev`).

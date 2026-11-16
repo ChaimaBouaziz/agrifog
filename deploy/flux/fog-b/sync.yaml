@@ -1,0 +1,30 @@
+# GitOps de fog-b : Flux lit le dépôt GitHub (public, pas de jeton) et applique deploy/flux/fog-b/apps.
+# Installé une seule fois par Ansible :  ansible-playbook -i inventory.ini site.yml -l fog-b -e gitops=true
+# Ensuite, tout changement mergé sur main dans deploy/helm ou deploy/flux/fog-b est appliqué en ~1 min.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: agrifog
+  namespace: flux-system
+spec:
+  interval: 1m
+  url: https://github.com/ChaimaBouaziz/agrifog
+  ref:
+    branch: main
+  ignore: |
+    /*
+    !/deploy/helm/
+    !/deploy/flux/
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: agrifog-apps
+  namespace: flux-system
+spec:
+  interval: 1m
+  path: ./deploy/flux/fog-b/apps
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: agrifog

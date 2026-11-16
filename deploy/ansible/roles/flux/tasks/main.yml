@@ -1,0 +1,62 @@
+- name: Flux est-il déjà installé ?
+  ansible.builtin.stat:
+    path: "{{ bin_dir }}/flux"
+  register: flux_bin
+
+- name: CLI Flux
+  when: not flux_bin.stat.exists
+  block:
+    - name: Télécharger Flux
+      ansible.builtin.get_url:
+        url: "https://github.com/fluxcd/flux2/releases/download/v{{ flux_version }}/flux_{{ flux_version }}_linux_amd64.tar.gz"
+        dest: /tmp/flux.tar.gz
+        timeout: 120
+    - name: Extraire Flux
+      ansible.builtin.unarchive:
+        src: /tmp/flux.tar.gz
+        dest: "{{ bin_dir }}"
+        remote_src: true
+        include: [flux]
+
+- name: Le cluster est-il compatible ?
+  ansible.builtin.command: "{{ bin_dir }}/flux check --pre"
+  changed_when: false
+
+- name: Contrôleurs Flux déjà présents ?
+  ansible.builtin.command: "{{ bin_dir }}/kubectl get namespace flux-system"
+  register: flux_ns
+  failed_when: false
+  changed_when: false
+
+- name: "Passage à GitOps : retirer le déploiement Helm lancé par Ansible (Flux le recrée)"
+  ansible.builtin.command: "{{ bin_dir }}/helm uninstall agrifog --wait"
+  when: flux_ns.rc != 0
+  register: uninstall
+  failed_when: false
+  changed_when: uninstall.rc == 0
+
+- name: "Installer les contrôleurs Flux (1re fois, téléchargement des images Flux)"
+  ansible.builtin.command: "{{ bin_dir }}/flux install --components=source-controller,kustomize-controller,helm-controller"
+  when: flux_ns.rc != 0
+
+- name: "Brancher le fog sur le dépôt GitHub (GitRepository + Kustomization)"
+  ansible.builtin.command: "{{ bin_dir }}/kubectl apply -f {{ repo_root }}/deploy/flux/{{ fog_id }}/sync.yaml"
+  register: sync
+  changed_when: "'created' in sync.stdout or 'configured' in sync.stdout"
+
+- name: Forcer une première synchronisation
+  ansible.builtin.command: "{{ bin_dir }}/flux reconcile kustomization agrifog-apps --with-source --timeout=5m"
+  changed_when: false
+
+- name: Attendre le déploiement des services par Flux
+  ansible.builtin.command: "{{ bin_dir }}/kubectl wait helmrelease/agrifog --for=condition=Ready --timeout=600s"
+  changed_when: false
+
+- name: État GitOps
+  ansible.builtin.command: "{{ bin_dir }}/flux get all -A"
+  register: flux_state
+  changed_when: false
+
+- name: Résultat
+  ansible.builtin.debug:
+    msg: "{{ flux_state.stdout_lines + ['', 'Changer le fog = modifier deploy/helm/agrifog/values-' ~ fog_id ~ '.yaml dans Git, merger sur main : Flux applique en ~1 min.'] }}"

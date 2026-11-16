@@ -28,6 +28,10 @@ spec:
             {{- range $app.args }}
             - {{ . | quote }}
             {{- end }}
+            {{- if and (eq $app.name "simulator") $.Values.simulatorDevices }}
+            - "--devices"
+            - {{ $.Values.simulatorDevices | quote }}
+            {{- end }}
           {{- end }}
           env:
             - name: FOG_ID
