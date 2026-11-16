@@ -987,12 +987,37 @@
           },
           "instant": true,
           "range": false
+        },
+        {
+          "refId": "B",
+          "expr": "vector(0) unless on() (agrifog_twin_takeover == 1)",
+          "legendFormat": "chaque fog pilote sa parcelle",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "instant": true,
+          "range": false
         }
       ],
       "fieldConfig": {
         "defaults": {
           "unit": "",
-          "mappings": [],
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "✓",
+                  "color": "#3b9b5a"
+                },
+                "1": {
+                  "text": "REPRISE EN COURS",
+                  "color": "#eb6834"
+                }
+              }
+            }
+          ],
           "color": {
             "mode": "thresholds"
           },
@@ -1000,12 +1025,15 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "#eb6834",
+                "color": "#3b9b5a",
                 "value": null
+              },
+              {
+                "color": "#eb6834",
+                "value": 1
               }
             ]
-          },
-          "noValue": "aucune reprise"
+          }
         },
         "overrides": []
       },
@@ -1019,7 +1047,7 @@
         },
         "colorMode": "background",
         "graphMode": "none",
-        "textMode": "name",
+        "textMode": "value_and_name",
         "justifyMode": "center",
         "orientation": "auto"
       },
