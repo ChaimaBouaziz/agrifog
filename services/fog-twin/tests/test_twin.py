@@ -172,3 +172,11 @@ def test_backup_api_round_trip():
     assert c.get("/backup/fog-z").status_code == 404
     assert c.post("/backup", json={"fog": "fog-z", "unix": 1.0, "data": {}}).status_code == 400
     assert c.post("/takeover", json={"from": "fog-z", "action": "request"}).status_code == 400
+
+
+def test_no_hasty_verdict_while_starting(tmp_path, monkeypatch):
+    twin, clock, _ = make_twin(tmp_path, monkeypatch)
+    twin.step()                                       # rien reçu encore : ni « isole » ni « reprise »
+    assert twin.state == "démarrage"
+    alive(twin, clock, 15)
+    assert twin.state == "normal"

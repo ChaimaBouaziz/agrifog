@@ -137,7 +137,7 @@ def test_shared_pump_and_twin_state():
     assert val(m, "agrifog_pump_in_use", fog="fog-a", zone="fog-a/z1") == 1
     assert val(m, "agrifog_pump_uses_total", fog="fog-a") == 1
     m.handle("domaine/pump/claim/fog-a", {"fog": "fog-a", "want": False, "using": False, "queue": 0})
-    assert val(m, "agrifog_pump_in_use", fog="fog-a", zone="fog-a/z1") is None
+    assert val(m, "agrifog_pump_in_use", fog="fog-a", zone="fog-a/z1") == 0
     assert val(m, "agrifog_pump_queue", fog="fog-a") == 0
 
     assert m.handle("domaine/twin/fog-b", {"fog": "fog-b", "state": "normal", "takeover": None}) == "twin_status"

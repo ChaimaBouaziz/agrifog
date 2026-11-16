@@ -1131,7 +1131,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (fog) (agrifog_pump_in_use)",
+          "expr": "max by (fog) (agrifog_pump_in_use)",
           "legendFormat": "{{fog}}",
           "datasource": {
             "type": "prometheus",
@@ -1150,7 +1150,7 @@
             "fillOpacity": 40,
             "showPoints": "never",
             "drawStyle": "line",
-            "spanNulls": true,
+            "spanNulls": false,
             "axisSoftMin": 0,
             "stacking": {
               "mode": "none"
