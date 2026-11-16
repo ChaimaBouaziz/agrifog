@@ -82,10 +82,28 @@ def quota_budget(fog: str) -> str:
 
 
 def quota_usage(fog: str) -> str:
+    """Litres utilisés aujourd'hui (irrigation-engine ; retained quand fog-twin le restaure)."""
     return f"{fog}/quota/usage"
 
 
-PUMP_TOKEN = f"{SHARED_ROOT}/pump/token"
+# --- pompe commune (pump-scheduler) ---
+PUMP_TOKEN = f"{SHARED_ROOT}/pump/token"   # retained, informatif : qui pompe en ce moment
+
+
+def pump_request(fog: str) -> str:
+    """Locale : irrigation-engine demande la pompe pour un arrosage (id, zone, seconds, ts)."""
+    return f"{fog}/pump/request"
+
+
+def pump_claim(fog: str) -> str:
+    """Partagée, retained : l'état de la demande de pompe de `fog` (want, since, using, remaining_s)."""
+    return f"{SHARED_ROOT}/pump/claim/{fog}"
+
+
+# --- fog jumeau (fog-twin) ---
+def twin_status(fog: str) -> str:
+    """Partagée, retained : état du jumeau de `fog` (normal, partition, reprise…)."""
+    return f"{SHARED_ROOT}/twin/{fog}"
 
 
 # --- federated learning (shared) ---

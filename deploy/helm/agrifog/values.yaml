@@ -30,6 +30,14 @@ apps:
     enabled: true
     port: 9108
     healthPath: /metrics
+  - name: pump-scheduler   # pompe commune : irrigation-engine lui demande la pompe avant d'arroser
+    enabled: true
+    port: 8000
+    healthPath: /health
+  - name: fog-twin         # sauvegarde / reprise entre les DEUX PC : sans objet dans un cluster de test isolé
+    enabled: false
+    port: 8080
+    healthPath: /health
   - name: simulator        # les ESP32 virtuels du fog (horloge alignée sur l'autre fog)
     enabled: true
     args: ["python", "-m", "simulator.main", "--sync"]

@@ -82,3 +82,25 @@ groups:
         labels: {severity: warning}
         annotations:
           summary: "{{ $labels.type }} sur {{ $labels.fog }} {{ $labels.zone }} {{ $labels.device }}"
+
+  - name: agrifog-jumeau
+    rules:
+      - alert: RepriseParcelle
+        expr: agrifog_twin_takeover == 1
+        labels: {severity: critical}
+        annotations:
+          summary: "{{ $labels.fog }} a repris la parcelle de {{ $labels.target }} (fog en panne)"
+
+      - alert: PartitionEntreFogs
+        expr: agrifog_twin_state{state="partition"} == 1
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: "Lien coupé entre les fogs (vu par {{ $labels.fog }}) : chacun garde sa parcelle"
+
+      - alert: PompeEmbouteillee
+        expr: agrifog_pump_queue > 3
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.fog }} : {{ $value }} arrosages attendent la pompe commune"

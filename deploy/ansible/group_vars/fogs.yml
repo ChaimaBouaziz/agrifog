@@ -23,4 +23,5 @@ images:                   # nom de l'image -> Dockerfile (contexte de build = ra
   - { name: irrigation-engine, dockerfile: services/irrigation-engine/Dockerfile }
   - { name: quota-negotiator,  dockerfile: services/quota-negotiator/Dockerfile }
   - { name: fog-exporter,      dockerfile: services/fog-exporter/Dockerfile }
+  - { name: pump-scheduler,    dockerfile: services/pump-scheduler/Dockerfile }
   - { name: simulator,         dockerfile: simulator/Dockerfile }

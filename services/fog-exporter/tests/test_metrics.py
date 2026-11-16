@@ -127,3 +127,23 @@ def test_ota_campaign_state_follows_the_campaign():
     m.handle("fog-b/ota/campaign", {"version": "0.3.1", "state": "rolled_back"})
     assert val(m, "agrifog_ota_campaign_state", fog="fog-b", version="0.3.1", state="rolled_back") == 1
     assert val(m, "agrifog_ota_campaign_state", fog="fog-b", version="0.3.1", state="canary") is None
+
+
+def test_shared_pump_and_twin_state():
+    m, _ = make()
+    claim = {"fog": "fog-a", "want": True, "using": True, "zone": "fog-a/z1", "queue": 2}
+    assert m.handle("domaine/pump/claim/fog-a", claim) == "pump_claim"
+    m.handle("domaine/pump/claim/fog-a", claim)                      # rafraîchissement : même arrosage
+    assert val(m, "agrifog_pump_in_use", fog="fog-a", zone="fog-a/z1") == 1
+    assert val(m, "agrifog_pump_uses_total", fog="fog-a") == 1
+    m.handle("domaine/pump/claim/fog-a", {"fog": "fog-a", "want": False, "using": False, "queue": 0})
+    assert val(m, "agrifog_pump_in_use", fog="fog-a", zone="fog-a/z1") is None
+    assert val(m, "agrifog_pump_queue", fog="fog-a") == 0
+
+    assert m.handle("domaine/twin/fog-b", {"fog": "fog-b", "state": "normal", "takeover": None}) == "twin_status"
+    m.handle("domaine/twin/fog-b", {"fog": "fog-b", "state": "reprise", "takeover": "fog-a"})
+    assert val(m, "agrifog_twin_state", fog="fog-b", state="reprise") == 1
+    assert val(m, "agrifog_twin_state", fog="fog-b", state="normal") is None
+    assert val(m, "agrifog_twin_takeover", fog="fog-b", target="fog-a") == 1
+    m.handle("domaine/twin/fog-b", {"fog": "fog-b", "state": "normal", "takeover": None})
+    assert val(m, "agrifog_twin_takeover", fog="fog-b", target="fog-a") is None

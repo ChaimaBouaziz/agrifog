@@ -236,3 +236,34 @@ def test_dry_wokwi_zone_gets_an_urgent_command():
     eng.on_telemetry("zw", {"ts": "2026-11-11T15:00:00Z", "device": "esp-b-wokwi", "soil_moisture": 6.0,
                             "air_temp": 24, "air_humidity": 40, "flow_lpm": 0, "water_l_total": 0})
     assert [p for t, p in sent if t == "fog-b/zone/zw/cmd"]                           # urgence : arrosage
+
+
+def test_shared_pump_asks_pump_scheduler_instead_of_the_valve(monkeypatch):
+    monkeypatch.setenv("PUMP_SHARED", "1")
+    eng, sent = make_engine()
+    for dev in DEVICES_Z1:
+        eng.on_telemetry("z1", tel("06:00", dev, 21.0))
+    assert not cmds(sent)
+    req = [p for t, p in sent if t == "fog-a/pump/request"]
+    assert len(req) == 1 and req[0]["zone"] == "z1" and req[0]["fog"] == "fog-a" and req[0]["seconds"] > 0
+
+
+def test_usage_restored_by_fog_twin_keeps_the_quota():
+    eng, sent = make_engine()
+    eng.on_budget({"day": "2025-07-01", "allocated_l": 1000, "mode": "négocié"})
+    eng.on_usage({"day": "2025-07-01", "used_l": 980})      # 980 L arrosés par le voisin pendant la reprise
+    eng.on_usage({"day": "2025-07-01", "used_l": 100})      # plus petit : ignoré
+    for dev in DEVICES_Z1:
+        eng.on_telemetry("z1", tel("06:00", dev, 21.0))
+    assert not cmds(sent)
+    assert eng.snapshot()["zones"]["z1"]["last_decision"]["kind"] == "quota"
+
+
+def test_order_waiting_for_the_shared_pump_is_not_sent_twice(monkeypatch):
+    monkeypatch.setenv("PUMP_SHARED", "1")
+    eng, sent = make_engine()
+    for hhmm_ in ("06:00", "06:40", "07:20"):      # la pompe est au voisin : pas d'accusé de vanne
+        for dev in DEVICES_Z1:
+            eng.on_telemetry("z1", tel(hhmm_, dev, 21.0))
+    assert len([p for t, p in sent if t == "fog-a/pump/request"]) == 1
+    assert not alerts(sent, "valve")

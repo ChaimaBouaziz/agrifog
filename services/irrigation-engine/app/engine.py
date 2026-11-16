@@ -3,11 +3,13 @@
     FOG_ID=fog-a python -m app.engine          # moteur seul, sans API
 
 Subscriptions:  {fog}/zone/+/telemetry   {fog}/zone/+/valve   {fog}/device/+/heartbeat
-                {fog}/weather/forecast
-Publications:   {fog}/zone/<z>/cmd   {fog}/zone/<z>/decision   {fog}/alert
+                {fog}/weather/forecast   {fog}/quota/budget   {fog}/quota/usage
+Publications:   {fog}/zone/<z>/cmd  (ou {fog}/pump/request si la pompe est commune)
+                {fog}/zone/<z>/decision   {fog}/alert   {fog}/quota/usage
 """
 
 import json
+import os
 import threading
 import time
 from datetime import datetime, timedelta
@@ -25,6 +27,7 @@ from .zone_state import ZoneState, parse_ts
 
 CHECK_DELAY = timedelta(minutes=30)   # vérif débitmètre 30 min (simulées) après la fin
 ACK_TIMEOUT = timedelta(hours=3)      # le boîtier de la vanne doit confirmer avant
+ACK_TIMEOUT_SHARED = timedelta(hours=8)   # pompe commune : l'ordre peut attendre son tour (80 s réelles)
 FORECAST_MAX_AGE = timedelta(hours=36)
 MODEL_PATH = REPO_ROOT / "data" / "models" / "moisture_model.json"   # produit par fed-learning
 Publish = Callable[[str, dict], None]
@@ -53,6 +56,11 @@ class IrrigationEngine:
         quota = cfg.get("domain", {}).get("daily_quota_l")
         self.provisional_l = quota / 2 if quota else None   # avant la négociation : part égale
         self.used_l: dict[str, float] = {}    # litres commandés par jour
+        # pompe commune aux deux fogs : l'ordre passe par pump-scheduler (PUMP_SHARED=0 pour s'en passer)
+        shared = cfg.get("pump", {}).get("shared", False)
+        self.pump_shared = os.environ.get("PUMP_SHARED", "1" if shared else "0") == "1"
+        # la zone Wokwi (vrai firmware, temps réel) a sa propre petite pompe : ordre direct
+        self.real_zones = {z["id"] for z in cfg["zones"] if not z.get("simulated", True)}
         self.publish: Publish = publish or (lambda topic, payload: None)
         self.lock = threading.Lock()
 
@@ -74,8 +82,10 @@ class IrrigationEngine:
             if moisture is None:
                 return
             et0, et0_src = st.temps.et0(now.date(), self.lat)
-            d = decide(moisture, now, et0, self.crop, self.zones[zone_id],
-                       self._rain(now), st.watering_until)
+            until = st.watering_until
+            if st.cmd and st.valve_opened is None:      # ordre envoyé, pas encore exécuté (pompe, réveil)
+                until = max(until or now, now + timedelta(minutes=1))
+            d = decide(moisture, now, et0, self.crop, self.zones[zone_id], self._rain(now), until)
             if d.action == "water":
                 d = self._apply_quota(d, now, self.zones[zone_id])
             ai = self._ai_prediction(st, now, et0)
@@ -136,7 +146,12 @@ class IrrigationEngine:
 
     def _water(self, st: ZoneState, d, now: datetime) -> None:
         cmd_id = f"{self.fog}-{st.id}-{now:%Y%m%dT%H%M}"
-        self.publish(topics.cmd(self.fog, st.id), {"id": cmd_id, "action": "water", "seconds": d.seconds})
+        order = {"id": cmd_id, "action": "water", "seconds": d.seconds}
+        if self.pump_shared and st.id not in self.real_zones:   # pump-scheduler enverra l'ordre quand la pompe commune sera à nous
+            self.publish(topics.pump_request(self.fog), {**order, "fog": self.fog, "zone": st.id,
+                                                         "ts": now.isoformat()})
+        else:
+            self.publish(topics.cmd(self.fog, st.id), order)
         day = now.date().isoformat()
         self.used_l[day] = self.used_l.get(day, 0.0) + d.liters
         self.publish(topics.quota_usage(self.fog), {"day": day, "used_l": round(self.used_l[day], 1)})
@@ -172,7 +187,8 @@ class IrrigationEngine:
                   f"jusqu'à {st.valve_until:%H:%M}")
 
     def _check_ack_timeout(self, st: ZoneState, now: datetime) -> None:
-        if st.cmd and st.valve_opened is None and now - st.cmd["sent"] > ACK_TIMEOUT:
+        timeout = ACK_TIMEOUT_SHARED if self.pump_shared else ACK_TIMEOUT
+        if st.cmd and st.valve_opened is None and now - st.cmd["sent"] > timeout:
             self._alert(("valve", st.id), {"ts": now.isoformat(), "type": "valve", "zone": st.id,
                         "msg": f"la vanne de {st.id} n'a pas confirmé l'ordre {st.cmd['id']}"})
             st.cmd, st.watering_until = None, None
@@ -262,6 +278,15 @@ class IrrigationEngine:
         with self.lock:
             self.budget = msg
 
+    def on_usage(self, msg: dict) -> None:
+        """Litres déjà utilisés aujourd'hui, restaurés par fog-twin après une reprise par le voisin
+        (ou par nous-mêmes avant un redémarrage) : on garde le plus grand, le quota reste respecté."""
+        with self.lock:
+            day, used = msg["day"], float(msg["used_l"])
+            if used > self.used_l.get(day, 0.0):
+                self.used_l[day] = used
+                print(f"[quota] {day} : {used:.0f} L déjà utilisés (restauré)")
+
     def on_forecast(self, msg: dict) -> None:
         with self.lock:
             self.rain_expected_mm = float(msg.get("rain_next_24h_mm", 0))
@@ -283,7 +308,7 @@ def run_mqtt(engine: IrrigationEngine, host: str, port: int, stop: threading.Eve
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f"irrigation-engine-{fog}")
     engine.publish = lambda topic, payload: client.publish(topic, json.dumps(payload), qos=1)
     subs = [topics.telemetry(fog, "+"), topics.valve(fog, "+"), topics.heartbeat(fog, "+"),
-            topics.weather_forecast(fog), topics.quota_budget(fog)]
+            topics.weather_forecast(fog), topics.quota_budget(fog), topics.quota_usage(fog)]
 
     def on_connect(c, u, f, rc, p):
         print(f"[mqtt] connecté ({rc}), abonné à {', '.join(subs)}")
@@ -297,6 +322,8 @@ def run_mqtt(engine: IrrigationEngine, host: str, port: int, stop: threading.Eve
                 engine.on_forecast(payload)
             elif m.topic == topics.quota_budget(fog):
                 engine.on_budget(payload)
+            elif m.topic == topics.quota_usage(fog):
+                engine.on_usage(payload)
             elif parts[1] == "device":
                 engine.on_heartbeat(parts[2], payload)
             elif parts[3] == "telemetry":
@@ -316,6 +343,7 @@ def run_mqtt(engine: IrrigationEngine, host: str, port: int, stop: threading.Eve
             time.sleep(5)
     client.loop_start()
     (stop or threading.Event()).wait()
+    client.disconnect()
     client.loop_stop()
 
 
