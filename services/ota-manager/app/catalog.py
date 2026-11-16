@@ -93,6 +93,8 @@ class Catalog:
         """
         if kind not in ("crash", "sensor"):
             raise ValueError("kind = crash ou sensor")
+        if version in self._releases:
+            raise ValueError(f"la version {version} existe déjà : choisir un autre numéro (ex. 0.3.2)")
         blob = self.path(self.get(base).version).read_bytes() + f"AGRIFOG-DEFECT:{kind}".encode()
         self.path(version).write_bytes(blob)
         rel = Release(version, hashlib.sha256(blob).hexdigest(), len(blob), "", f"démo : {base} + défaut {kind}")
