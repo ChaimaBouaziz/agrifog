@@ -91,3 +91,12 @@ def test_one_campaign_at_a_time(tmp_path):
     m.start_campaign("0.3.1")
     with pytest.raises(ValueError):
         m.start_campaign("0.3.0")
+
+
+def test_defect_refuses_existing_version(tmp_path):
+    _, cat, _, _ = setup(tmp_path)
+    cat.make_defect("0.3.0", "0.3.1", "crash")
+    for v in ("0.3.0", "0.3.1"):            # ni la version saine, ni une démo déjà créée
+        with pytest.raises(ValueError, match="existe déjà"):
+            cat.make_defect("0.3.0", v, "sensor")
+    assert "AGRIFOG-DEFECT" not in cat.path("0.3.0").read_bytes().decode(errors="ignore")
