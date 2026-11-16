@@ -30,6 +30,7 @@ WITNESS_PERIOD_S = 5
 STATUS_PERIOD_S = 10
 RELEASE_RETRY_S = 10
 RELEASE_TRIES = 12          # 2 minutes pour retrouver le voisin au démarrage
+WARMUP_S = 12               # au démarrage : écouter le voisin et le témoin avant de juger
 
 
 class BackupStore:
@@ -74,6 +75,7 @@ class FogTwin:
         self.state, self.reason = "démarrage", ""
         self.backup_ok: bool | None = None
         self.restored: dict | None = None
+        self.started = clock()
         self.lock = threading.RLock()
 
     # ------------------------------------------------------------- entrées
@@ -122,6 +124,8 @@ class FogTwin:
     def step(self) -> None:
         with self.lock:
             state, reason = assess(self.view())
+            if self.clock() - self.started < WARMUP_S and not self.maintenance and state != "normal":
+                state, reason = "démarrage", "écoute du voisin et du témoin cloud"
             if state == "reprise" and not self.takeover:
                 self._start_takeover(reason)
             elif state in ("normal", "partition", "voisin-inconnu") and self.takeover:

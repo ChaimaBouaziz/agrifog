@@ -249,8 +249,8 @@ class FogMetrics:
             fog, zone = p[3], (m.get("zone") if m.get("using") else None)
             old = self._pump_zone.get(fog)
             if old != zone:
-                if old is not None:
-                    self.pump_in_use.remove(fog, old)
+                if old is not None:      # 0 et pas remove : une série qui disparaît serait « reliée » par Grafana
+                    self.pump_in_use.labels(fog, old).set(0)
                 if zone is not None:
                     self.pump_uses.labels(fog).inc()
                 self._pump_zone[fog] = zone
