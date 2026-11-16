@@ -79,6 +79,17 @@ class FogMetrics:
         self.fl_round = Gauge("agrifog_fl_round", "Dernier tour d'apprentissage fédéré envoyé", ["fog"], registry=r)
         self.fl_mae = Gauge("agrifog_fl_mae_pct", "Erreur moyenne locale du modèle fédéré (% vol)", ["fog"], registry=r)
 
+        # --- pompe commune (pump-scheduler) et fog jumeau (fog-twin) ---------------------
+        self.pump_in_use = Gauge("agrifog_pump_in_use", "La pompe commune tourne pour ce fog (1) ou non (0)",
+                                 ["fog", "zone"], registry=r)
+        self.pump_queue = Gauge("agrifog_pump_queue", "Arrosages en attente de la pompe commune", ["fog"], registry=r)
+        self.pump_uses = Counter("agrifog_pump_uses_total", "Arrosages servis par la pompe commune", ["fog"], registry=r)
+        self._pump_zone: dict[str, str | None] = {}
+        self.twin_state = Gauge("agrifog_twin_state", "État du fog jumeau (1 = état courant)", ["fog", "state"], registry=r)
+        self.twin_takeover = Gauge("agrifog_twin_takeover", "Parcelle voisine reprise (1) par ce fog",
+                                   ["fog", "target"], registry=r)
+        self._twin: dict[str, tuple[str, str | None]] = {}
+
         self.ota = Counter("agrifog_ota_status_total", "Statuts OTA renvoyés par les ESP32",
                            ["fog", "version", "state"], registry=r)
         self.campaign = Gauge("agrifog_ota_campaign_state", "Campagne OTA : état courant (1) par version",
@@ -104,7 +115,8 @@ class FogMetrics:
         return [topics.telemetry(f, "+"), topics.decision(f, "+"), topics.cmd(f, "+"), topics.valve(f, "+"),
                 topics.heartbeat(f, "+"), topics.ota_status(f, "+"), topics.ota_campaign(f), topics.alert(f), topics.quota_budget(f), topics.quota_usage(f),
                 "domaine/quota/allocation/+", "domaine/quota/request/+", "domaine/fog/+/status",
-                "domaine/fl/update/+", "$SYS/broker/connection/+/state"]
+                "domaine/fl/update/+", "domaine/pump/claim/+", "domaine/twin/+",
+                "$SYS/broker/connection/+/state"]
 
     def handle(self, topic: str, payload) -> str | None:
         """Update the metrics for one message. Returns the kind of message (or None if ignored)."""
@@ -233,6 +245,31 @@ class FogMetrics:
             if alive:   # heure d'envoi réelle : un ancien message "retained" ne fait pas croire le voisin vivant
                 self.peer_last_seen.labels(p[2]).set(min(now, float(m.get("unix", now))))
             return "fog_status"
+        if p[1] == "pump" and p[2] == "claim" and len(p) == 4:
+            fog, zone = p[3], (m.get("zone") if m.get("using") else None)
+            old = self._pump_zone.get(fog)
+            if old != zone:
+                if old is not None:
+                    self.pump_in_use.remove(fog, old)
+                if zone is not None:
+                    self.pump_uses.labels(fog).inc()
+                self._pump_zone[fog] = zone
+            if zone is not None:
+                self.pump_in_use.labels(fog, zone).set(1)
+            self.pump_queue.labels(fog).set(float(m.get("queue") or 0))
+            return "pump_claim"
+        if p[1] == "twin" and len(p) == 3:
+            fog, state, target = p[2], str(m.get("state")), m.get("takeover")
+            old_state, old_target = self._twin.get(fog, (None, None))
+            if old_state and old_state != state:
+                self.twin_state.remove(fog, old_state)
+            if old_target and old_target != target:
+                self.twin_takeover.remove(fog, old_target)
+            self.twin_state.labels(fog, state).set(1)
+            if target:
+                self.twin_takeover.labels(fog, target).set(1)
+            self._twin[fog] = (state, target)
+            return "twin_status"
         if p[1] == "fl" and p[2] == "update":
             self.fl_round.labels(p[3]).set(float(m.get("round") or 0))
             if m.get("mae") is not None:

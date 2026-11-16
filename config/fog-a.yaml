@@ -36,6 +36,14 @@ zones:
     area_m2: 200
     flow_lpm: 20
 
+pump:              # forage commun aux deux parcelles : une seule zone arrosée à la fois (pump-scheduler)
+  shared: true
+
+twin:              # fog jumeau : sauvegarde mutuelle et reprise de la parcelle voisine (fog-twin)
+  takeover_after_s: 30        # secondes RÉELLES de silence du voisin (= 3 h simulées)
+  witness_broker: 54.36.178.49   # témoin cloud = test.mosquitto.org (par IP : DNS de Docker)
+  witness_prefix: agrifog-enis-2026
+
 mqtt:
   host: 127.0.0.1   # pas "localhost" : sous Windows il part en IPv6 vers WSL
   port: 1883
