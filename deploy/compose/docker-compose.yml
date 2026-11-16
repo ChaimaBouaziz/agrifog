@@ -1,5 +1,6 @@
 # Environnement d'un fog (sans K3s).
-#   cd deploy/compose ; $env:FOG_ID="fog-a"   (ou "fog-b")
+#   cd deploy/compose ; Set-Content .env "FOG_ID=fog-a"   (une fois par PC ; "fog-b" chez Ines)
+#   .env est ignoré par Git : chaque PC garde son identité, même dans un nouveau terminal.
 #   docker compose up -d                          # broker + base de données
 #   docker compose --profile monitoring up -d     # + supervision (exporter, Prometheus, Grafana, Alertmanager)
 name: agrifog   # nom de projet fixe : ne se mélange pas avec d'autres projets lancés depuis un dossier "compose"
@@ -11,7 +12,7 @@ services:
     volumes:
       - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       # bridge propre à chaque fog : FOG_ID=fog-a active le bridge vers fog-b
-      - ./mosquitto/bridges/${FOG_ID:-fog-b}:/mosquitto/config/conf.d:ro
+      - ./mosquitto/bridges/${FOG_ID:?FOG_ID manquant - créer deploy/compose/.env avec FOG_ID=fog-a ou fog-b}:/mosquitto/config/conf.d:ro
     restart: unless-stopped
 
   influxdb:
@@ -36,7 +37,7 @@ services:
       dockerfile: services/fog-exporter/Dockerfile
     image: agrifog/fog-exporter:dev
     environment:
-      FOG_ID: ${FOG_ID:-fog-b}
+      FOG_ID: ${FOG_ID:?FOG_ID manquant - créer deploy/compose/.env avec FOG_ID=fog-a ou fog-b}
       MQTT_HOST: mosquitto
     volumes:
       - ../../config:/srv/config:ro
