@@ -13,6 +13,8 @@ crop:
   p: 0.65             # fraction facilement utilisable (FAO-56)
   stress_sensitivity: 0.5   # poids dans le partage du quota (1 = très sensible au stress)
   moisture_threshold_pct: 11   # = CC - p*(CC-PF) : début du stress
+  fixed_baseline_mm_day: 3.5   # meilleur arrosage à heure fixe sans stress (expérience 1)
+  season_saving_pct: 17        # économie d'eau d'AgriFog sur la saison (expérience 1)
 
 soil:
   type: sableux
