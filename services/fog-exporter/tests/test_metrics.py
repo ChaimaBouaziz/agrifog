@@ -147,3 +147,18 @@ def test_shared_pump_and_twin_state():
     assert val(m, "agrifog_twin_takeover", fog="fog-b", target="fog-a") == 1
     m.handle("domaine/twin/fog-b", {"fog": "fog-b", "state": "normal", "takeover": None})
     assert val(m, "agrifog_twin_takeover", fog="fog-b", target="fog-a") is None
+
+
+def test_farmer_dashboard_metrics():
+    m, _ = make("fog-a")
+    assert val(m, "agrifog_fixed_baseline_liters_per_day", fog="fog-a") == 6.5 * 600
+    assert val(m, "agrifog_season_saving_pct", fog="fog-a") == 20
+    m.handle("fog-a/weather/forecast", {"ts": "2025-07-01T00:00:00Z", "rain_next_24h_mm": 4.5})
+    assert val(m, "agrifog_rain_forecast_mm", fog="fog-a") == 4.5
+    m.handle("fog-a/zone/z1/decision", {"action": "wait", "kind": "no_need",
+                                         "reason": "pas besoin : 25 % | IA fédérée : 24 %", "moisture": 25})
+    assert val(m, "agrifog_decision_info", fog="fog-a", zone="z1", action="wait", kind="no_need",
+               reason="pas besoin : 25 %") == 1
+    m.handle("fog-a/zone/z1/decision", {"action": "water", "kind": "water", "reason": "sec", "moisture": 20})
+    assert val(m, "agrifog_decision_info", fog="fog-a", zone="z1", action="wait", kind="no_need",
+               reason="pas besoin : 25 %") is None                     # une seule décision par zone

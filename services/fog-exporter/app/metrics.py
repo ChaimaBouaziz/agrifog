@@ -42,6 +42,15 @@ class FogMetrics:
         self.last_moisture = Gauge("agrifog_decision_moisture_pct", "Humidité retenue par la dernière décision", z, registry=r)
         self.ai_6h = Gauge("agrifog_ai_moisture_6h_pct", "Prédiction de l'IA fédérée : humidité dans 6 h", z, registry=r)
         self.et0 = Gauge("agrifog_et0_mm_per_day", "ET0 utilisée par la dernière décision (mm/j)", z, registry=r)
+        self.decision_info = Gauge("agrifog_decision_info", "Dernière décision de chaque zone, avec sa raison (1)",
+                                   z + ["action", "kind", "reason"], registry=r)
+        self._decision_of: dict[str, tuple] = {}
+        self.rain = Gauge("agrifog_rain_forecast_mm", "Pluie prévue dans les 24 h (mm)", ["fog"], registry=r)
+        self.baseline = Gauge("agrifog_fixed_baseline_liters_per_day",
+                              "Arrosage à heure fixe équivalent (meilleure dose sans stress, expérience 1), L/jour",
+                              ["fog"], registry=r)
+        self.saving = Gauge("agrifog_season_saving_pct", "Économie d'eau d'AgriFog sur la saison (expérience 1), %",
+                            ["fog"], registry=r)
         self.commands = Counter("agrifog_water_commands_total", "Ordres d'arrosage envoyés", z, registry=r)
         self.cmd_seconds = Counter("agrifog_water_commanded_seconds_total", "Durée d'arrosage commandée (s simulées)", z, registry=r)
         self.valve_acks = Counter("agrifog_valve_acks_total", "Accusés d'ouverture de vanne", z, registry=r)
@@ -108,12 +117,18 @@ class FogMetrics:
             for counter in (self.commands, self.cmd_seconds, self.valve_acks):
                 counter.labels(fog, zone["id"])
         self.q_daily.labels(fog).set(cfg.get("domain", {}).get("daily_quota_l", 0))
+        crop = cfg.get("crop", {})
+        area = sum(z.get("area_m2", 200) for z in cfg.get("zones", []) if z.get("simulated", True))
+        if crop.get("fixed_baseline_mm_day"):
+            self.baseline.labels(fog).set(float(crop["fixed_baseline_mm_day"]) * area)
+        if crop.get("season_saving_pct") is not None:
+            self.saving.labels(fog).set(float(crop["season_saving_pct"]))
 
     # ------------------------------------------------------------------ routing
     def subscriptions(self) -> list[str]:
         f = self.fog
         return [topics.telemetry(f, "+"), topics.decision(f, "+"), topics.cmd(f, "+"), topics.valve(f, "+"),
-                topics.heartbeat(f, "+"), topics.ota_status(f, "+"), topics.ota_campaign(f), topics.alert(f), topics.quota_budget(f), topics.quota_usage(f),
+                topics.heartbeat(f, "+"), topics.ota_status(f, "+"), topics.ota_campaign(f), topics.alert(f), topics.quota_budget(f), topics.quota_usage(f), topics.weather_forecast(f),
                 "domaine/quota/allocation/+", "domaine/quota/request/+", "domaine/fog/+/status",
                 "domaine/fl/update/+", "domaine/pump/claim/+", "domaine/twin/+",
                 "$SYS/broker/connection/+/state"]
@@ -144,6 +159,9 @@ class FogMetrics:
             kind = self._alert(payload)
         elif topic == topics.quota_budget(f):
             kind = self._budget(payload)
+        elif topic == topics.weather_forecast(f):
+            self.rain.labels(f).set(float(payload.get("rain_next_24h_mm") or 0))
+            kind = "forecast"
         elif topic == topics.quota_usage(f):
             self.q_used.labels(f).set(float(payload["used_l"]))
             kind = "quota_usage"
@@ -178,6 +196,13 @@ class FogMetrics:
             self.et0.labels(self.fog, zone).set(float(m["et0"]))
         if m.get("ai_moisture_6h") is not None:
             self.ai_6h.labels(self.fog, zone).set(float(m["ai_moisture_6h"]))
+        reason = str(m.get("reason") or "").split(" | IA")[0][:160]   # la phrase du moteur, sans le détail IA
+        new = (m.get("action", "?"), m.get("kind") or "?", reason)
+        old = self._decision_of.get(zone)
+        if old and old != new:
+            self.decision_info.remove(self.fog, zone, *old)
+        self._decision_of[zone] = new
+        self.decision_info.labels(self.fog, zone, *new).set(1)
         return "decision"
 
     def _cmd(self, zone: str, m: dict, now: float) -> str | None:
