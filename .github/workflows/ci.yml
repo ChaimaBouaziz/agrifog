@@ -27,6 +27,7 @@ jobs:
           - services/fog-twin
           - services/ota-manager
           - services/fog-exporter
+          - services/test-console
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

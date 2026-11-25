@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgriFog — console de test</title>
+<style>
+  :root { --bg:#fbfbf9; --card:#fff; --ink:#1f1e1c; --ink2:#5f5e5a; --muted:#8a8984; --line:#e4e2da;
+    --blue:#2a78d6; --blue-bg:#e7f1fb; --ok:#2f7d32; --ok-bg:#e5f4e4; --ko:#b3261e; --ko-bg:#fbebeb;
+    --run:#9a5b00; --run-bg:#f9eeda; --mono: ui-monospace, Consolas, monospace; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#1b1b19; --card:#242422; --ink:#ecebe6; --ink2:#b9b7af;
+    --muted:#8a8984; --line:#3a3936; --blue:#79b0ee; --blue-bg:#1d2f45; --ok:#8fd18f; --ok-bg:#1f3320;
+    --ko:#f19b94; --ko-bg:#3d1f1d; --run:#f0c070; --run-bg:#3a2d14; } }
+  * { box-sizing: border-box; }
+  body { margin:0; font: 15px/1.5 system-ui, "Segoe UI", sans-serif; background:var(--bg); color:var(--ink); }
+  header { padding:16px 24px; border-bottom:1px solid var(--line); display:flex; gap:16px; align-items:center; flex-wrap:wrap; }
+  h1 { font-size:19px; font-weight:600; margin:0; }
+  .pill { font-size:13px; padding:3px 10px; border-radius:99px; background:var(--blue-bg); color:var(--blue); }
+  .pill.ko { background:var(--ko-bg); color:var(--ko); }
+  main { display:grid; grid-template-columns: minmax(420px, 1.1fr) minmax(360px, 1fr); gap:0; height: calc(100vh - 64px); }
+  #left { overflow:auto; padding:16px 24px 40px; border-right:1px solid var(--line); }
+  #right { display:flex; flex-direction:column; min-height:0; }
+  .group h2 { font-size:15px; font-weight:600; margin:22px 0 8px; display:flex; justify-content:space-between; align-items:center; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px 14px; margin-bottom:10px; }
+  .card .top { display:flex; justify-content:space-between; gap:12px; align-items:center; }
+  .card .title { font-weight:600; }
+  .card .sub { color:var(--ink2); font-size:13.5px; margin-top:6px; }
+  .card .sub b { color:var(--ink); font-weight:600; }
+  .status { font-size:12.5px; padding:2px 9px; border-radius:99px; white-space:nowrap; background:var(--line); color:var(--ink2); }
+  .status.ok { background:var(--ok-bg); color:var(--ok); } .status.ko { background:var(--ko-bg); color:var(--ko); }
+  .status.run { background:var(--run-bg); color:var(--run); }
+  .result { margin-top:8px; font-size:13.5px; padding:6px 10px; border-radius:6px; }
+  .result.ok { background:var(--ok-bg); color:var(--ok); } .result.ko { background:var(--ko-bg); color:var(--ko); }
+  .result.run { background:var(--run-bg); color:var(--run); }
+  .result.na { background:var(--line); color:var(--ink2); }
+  details { margin-top:6px; font-size:12.5px; color:var(--muted); } details pre { white-space:pre-wrap; font-family:var(--mono); margin:4px 0 0; }
+  button { font:inherit; font-size:13.5px; padding:5px 12px; border-radius:6px; border:1px solid var(--blue); background:var(--blue); color:#fff; cursor:pointer; }
+  button.ghost { background:transparent; color:var(--blue); }
+  button:disabled { opacity:.45; cursor:default; }
+  .needs { font-size:12px; color:var(--muted); margin-left:6px; }
+  #feedbar { padding:12px 16px; border-bottom:1px solid var(--line); display:flex; gap:8px; align-items:center; }
+  #feedbar input { flex:1; font:inherit; font-size:13.5px; padding:5px 10px; border:1px solid var(--line); border-radius:6px; background:var(--card); color:var(--ink); }
+  #feed { flex:1; overflow:auto; font-family:var(--mono); font-size:12.5px; padding:6px 16px 30px; }
+  .msg { padding:4px 0; border-bottom:1px dashed var(--line); }
+  .msg .t { color:var(--muted); } .msg .topic { color:var(--blue); font-weight:600; }
+  .msg .topic.shared { color:var(--run); } .msg .p { color:var(--ink2); word-break:break-all; }
+  .hint { color:var(--muted); font-size:13px; margin:4px 0 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>AgriFog — console de test</h1>
+  <span class="pill" id="fog">…</span>
+  <span class="pill" id="broker">broker…</span>
+  <span class="pill" id="score">0 / 0</span>
+  <button class="ghost" onclick="runAll(null)">Tout lancer, un par un</button>
+</header>
+<main>
+  <section id="left">
+    <p class="hint">Chaque scénario provoque une situation, puis vérifie tout seul la réaction du système. Les pannes injectées sont réparées à la fin du scénario.</p>
+    <div id="groups"></div>
+  </section>
+  <section id="right">
+    <div id="feedbar">
+      <input id="filter" placeholder="filtrer les topics (ex. alert, pump, domaine/)">
+      <button class="ghost" id="pause" onclick="togglePause()">Pause</button>
+      <button class="ghost" onclick="feed.innerHTML=''">Effacer</button>
+    </div>
+    <div id="feed"></div>
+  </section>
+</main>
+<script>
+const groupsEl = document.getElementById('groups'), feed = document.getElementById('feed');
+let paused = false, state = [], queueRun = null;
+const cls = s => s === 'réussi' ? 'ok' : s === 'échoué' ? 'ko' : s === 'en cours' ? 'run' : s === 'non testable' ? 'na' : '';
+const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+async function info() {
+  const i = await (await fetch('/api/info')).json();
+  document.getElementById('fog').textContent = `${i.fog} (${i.crop}) · voisin ${i.neighbor}`;
+  const b = document.getElementById('broker');
+  b.textContent = i.mqtt ? 'broker connecté' : 'broker injoignable'; b.className = 'pill' + (i.mqtt ? '' : ' ko');
+}
+
+function render() {
+  const open = new Set([...document.querySelectorAll('details[open]')].map(d => d.dataset.id));
+  const groups = {};
+  state.forEach(s => (groups[s.group] = groups[s.group] || []).push(s));
+  groupsEl.innerHTML = Object.entries(groups).map(([g, list]) => `
+    <div class="group"><h2>${esc(g)} <button class="ghost" onclick='runAll(${JSON.stringify(g)})'>Lancer le groupe</button></h2>
+    ${list.map(s => `
+      <div class="card">
+        <div class="top"><span class="title">${esc(s.title)}${s.needs ? `<span class="needs">nécessite ${s.needs === 'ota' ? 'ota-manager' : 'le voisin'}</span>` : ''}</span>
+          <span style="display:flex;gap:8px;align-items:center"><span class="status ${cls(s.status)}">${esc(s.status)}${s.elapsed_s != null ? ` · ${s.elapsed_s} s` : ''}</span>
+          <button onclick="run('${s.id}')" ${s.status === 'en cours' ? 'disabled' : ''}>Lancer</button></span></div>
+        <div class="sub"><b>On provoque :</b> ${esc(s.does)}</div>
+        <div class="sub"><b>Attendu :</b> ${esc(s.expects)} <span class="needs">(délai max ${s.timeout_s} s)</span></div>
+        ${s.detail ? `<div class="result ${cls(s.status)}">${esc(s.detail)}</div>` : s.status === 'en cours' ? `<div class="result run">en attente de la réaction du système…</div>` : ''}
+        ${s.log.length ? `<details data-id="${s.id}" ${open.has(s.id) ? 'open' : ''}><summary>actions envoyées (${s.log.length})</summary><pre>${esc(s.log.join('\n'))}</pre></details>` : ''}
+      </div>`).join('')}</div>`).join('');
+  const done = state.filter(s => s.status === 'réussi').length, tried = state.filter(s => ['réussi', 'échoué'].includes(s.status)).length;
+  document.getElementById('score').textContent = `${done} réussi(s) sur ${tried} lancé(s)`;
+}
+
+async function refresh() { state = await (await fetch('/api/scenarios')).json(); render(); }
+
+async function run(id) {
+  const r = await fetch('/api/scenarios/' + id, { method: 'POST' });
+  if (!r.ok) alertBox((await r.json()).detail);
+  refresh();
+}
+function alertBox(text) { const d = document.createElement('div'); d.className = 'msg'; d.innerHTML = `<span class="topic shared">console</span> ${esc(text)}`; feed.prepend(d); }
+
+async function runAll(group) {
+  const ids = state.filter(s => !group || s.group === group).map(s => s.id);
+  for (const id of ids) {
+    await run(id);
+    while (true) {
+      await new Promise(r => setTimeout(r, 1000));
+      await refresh();
+      if (state.find(s => s.id === id).status !== 'en cours') break;
+    }
+  }
+}
+
+function togglePause() { paused = !paused; document.getElementById('pause').textContent = paused ? 'Reprendre' : 'Pause'; }
+
+const es = new EventSource('/api/stream');
+es.onmessage = e => {
+  if (paused) return;
+  const m = JSON.parse(e.data), f = document.getElementById('filter').value.trim();
+  if (f && !m.topic.includes(f)) return;
+  const d = document.createElement('div'); d.className = 'msg';
+  d.innerHTML = `<span class="t">${m.t}</span> <span class="topic ${m.topic.startsWith('domaine/') ? 'shared' : ''}">${esc(m.topic)}</span>${m.retained ? ' <span class="t">(retained)</span>' : ''}<div class="p">${esc(JSON.stringify(m.payload))}</div>`;
+  feed.prepend(d);
+  while (feed.children.length > 300) feed.lastChild.remove();
+};
+
+info(); refresh(); setInterval(refresh, 1500); setInterval(info, 5000);
+</script>
+</body>
+</html>

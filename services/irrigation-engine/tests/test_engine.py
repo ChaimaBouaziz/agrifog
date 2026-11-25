@@ -267,3 +267,26 @@ def test_order_waiting_for_the_shared_pump_is_not_sent_twice(monkeypatch):
             eng.on_telemetry("z1", tel(hhmm_, dev, 21.0))
     assert len([p for t, p in sent if t == "fog-a/pump/request"]) == 1
     assert not alerts(sent, "valve")
+
+
+def test_measurement_noise_does_not_accuse_a_healthy_sensor():
+    from app import anomalies as an
+    # arrosage d'1 h : +1 % attendu ; un capteur sain un peu bas à cause du bruit (±0,2 %)
+    before = {"esp-a-01": 25.0, "esp-a-02": 25.0, "esp-a-03": 25.0}
+    after = {"esp-a-01": 24.8, "esp-a-02": 25.3, "esp-a-03": 25.4}
+    assert an.check_rise(before, after, 1.0) == []
+    # un vrai capteur figé, lui, reste nettement sous les autres
+    after = {"esp-a-01": 26.8, "esp-a-02": 25.0, "esp-a-03": 26.9}
+    assert [d for _, d, _ in an.check_rise(before, after, 2.0)] == ["esp-a-02"]
+
+
+def test_watering_a_full_soil_raises_no_false_alarm():
+    eng, sent = make_engine()
+    for dev in DEVICES_Z1:                                              # sol presque plein (CC 30 %)
+        eng.on_telemetry("z1", tel("10:00", dev, 29.5, 500))
+    eng.on_valve("z1", {"id": "telegram-1", "device": "esp-a-01", "opened": "2025-07-01T10:05:00Z",
+                        "until": "2025-07-01T12:05:00Z", "water_l_total": 500})     # arrosage manuel 2 h
+    eng.on_telemetry("z1", tel("12:45", "esp-a-01", 29.6, 500 + 2400))
+    for dev in DEVICES_Z1:
+        eng.on_telemetry("z1", tel("14:15", dev, 29.4, 500 + 2400))     # l'eau a drainé
+    assert not alerts(sent, "no_rise") and not alerts(sent, "sensor")
