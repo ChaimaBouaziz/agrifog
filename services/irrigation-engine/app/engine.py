@@ -220,9 +220,13 @@ class IrrigationEngine:
             print(f"[{now:%m-%d %H:%M}] {st.id} débit OK | {message}")
             self._resolve(("pump", st.id), now.isoformat())
             area = self.zones[st.id].area_m2
-            st.rise_check = {"after": st.valve_until + an.RISE_CHECK_AFTER, "until": st.valve_until,
-                             "before": st.cmd["before"],
-                             "expected_pct": delivered / area / self.crop.root_mm * 100}
+            before = st.cmd["before"]
+            # au-delà de la capacité au champ l'eau draine : on n'attend pas plus que la place restante
+            room = self.crop.fc_pct - sum(before.values()) / len(before) if before else 0.0
+            expected = min(delivered / area / self.crop.root_mm * 100, room)
+            if expected >= an.MIN_EXPECTED_RISE_PCT:     # sol déjà presque plein : rien à contrôler
+                st.rise_check = {"after": st.valve_until + an.RISE_CHECK_AFTER, "until": st.valve_until,
+                                 "before": before, "expected_pct": expected}
         st.pending, st.cmd, st.valve_opened, st.valve_until = None, None, None, None
 
     def _check_rise(self, st: ZoneState, now: datetime) -> None:

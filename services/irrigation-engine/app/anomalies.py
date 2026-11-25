@@ -17,6 +17,9 @@ VALVE_GRACE = timedelta(minutes=2)  # tolérance à l'ouverture / fermeture de l
 OFFLINE_AFTER = timedelta(hours=3)  # ~3 réveils manqués
 RISE_CHECK_AFTER = timedelta(hours=2)
 MIN_RISE_RATIO = 0.3               # on attend au moins 30 % de la hausse théorique
+MIN_EXPECTED_RISE_PCT = 1.0        # hausse attendue trop faible (sol presque plein) : pas de contrôle
+SENSOR_MARGIN_PCT = 0.8            # un capteur n'est accusé que s'il est nettement sous les autres :
+                                   # deux lectures à ±0,2 % peuvent déjà s'écarter de 0,8 point
 
 
 def valve_should_be_open(now: datetime, opened: datetime | None, until: datetime | None) -> bool:
@@ -57,7 +60,7 @@ def check_rise(before: dict[str, float], after: dict[str, float], expected_pct: 
                                   f"attendus) : tuyau bouché ou capteurs défectueux ?")]
     return [("sensor", d, f"le capteur {d} ne réagit pas à l'arrosage (+{r:.1f} %, "
                           f"les autres +{median:.1f} %) : capteur défectueux ?")
-            for d, r in sorted(rises.items()) if r < need]
+            for d, r in sorted(rises.items()) if r < need and median - r >= SENSOR_MARGIN_PCT]
 
 
 @dataclass
